@@ -1,0 +1,631 @@
+#root {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1.5rem;
+  text-align: left;
+  background-color: #fff;
+  min-height: 100vh;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.06);
+}
+
+.dashboard header {
+  margin-bottom: 2rem;
+}
+
+.dashboard header h1 {
+  font-size: 1.75rem;
+  margin: 0 0 0.25rem 0;
+}
+
+.dashboard header p {
+  color: #555;
+  margin: 0;
+}
+
+.dashboard .section {
+  margin-bottom: 2.5rem;
+}
+
+.dashboard .section h2 {
+  font-size: 1.1rem;
+  margin: 0 0 1rem 0;
+  color: #444;
+}
+
+.section-desc {
+  margin: -0.5rem 0 0.75rem 0;
+  font-size: 0.9rem;
+  color: #555;
+}
+
+.mention-badge {
+  opacity: 0.9;
+}
+
+.competition-mentioned-cell {
+  max-width: 200px;
+  font-size: 0.9rem;
+  line-height: 1.3;
+}
+
+.competition-summary {
+  margin-bottom: 1rem;
+  font-size: 0.95rem;
+}
+
+.competition-summary strong {
+  color: #7b1fa2;
+}
+
+.section-note {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: #f1f5f9;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  color: #4b5563;
+  border: 1px solid #e2e8f0;
+}
+
+.section-note code {
+  background: #e5e5ea;
+  padding: 0.1em 0.4em;
+  border-radius: 4px;
+  color: #333;
+}
+
+.response-details {
+  margin-bottom: 0.75rem;
+}
+
+.response-details summary {
+  cursor: pointer;
+  padding: 0.5rem 0;
+  color: #555;
+}
+
+.response-text-pre {
+  margin: 0.5rem 0 0 0;
+  padding: 0.75rem 1rem;
+  background: #f8fafc;
+  border-radius: 6px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.8125rem;
+  max-height: 20rem;
+  overflow-y: auto;
+  color: #374151;
+  border: 1px solid #e5e7eb;
+  line-height: 1.4;
+}
+
+.others-cited-cell {
+  max-width: 200px;
+  font-size: 0.9rem;
+  line-height: 1.3;
+}
+
+.competitor-only-cited {
+  margin-top: 1rem;
+}
+
+.competitor-only-cited h3 {
+  font-size: 0.95rem;
+  margin: 0 0 0.5rem 0;
+  color: #7b1fa2;
+}
+
+.competitor-only-cited ul {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.pagination-bar button {
+  padding: 0.35rem 0.6rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  color: #374151;
+}
+
+.pagination-bar button:hover:not(:disabled) {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #111827;
+}
+
+.pagination-bar button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pagination-info {
+  font-size: 0.9rem;
+  color: #555;
+}
+
+.brief-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.brief-actions button {
+  padding: 0.35rem 0.6rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  color: #374151;
+}
+
+.brief-actions button:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #111827;
+}
+
+.response-details-btn {
+  font-size: 0.9rem;
+}
+
+.response-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.response-modal {
+  background: #fff;
+  border-radius: 8px;
+  max-width: 90vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+  border: 1px solid #e0e0e0;
+}
+
+.response-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid #e0e0e0;
+  flex-shrink: 0;
+}
+
+.response-modal-header h2 {
+  margin: 0;
+  font-size: 1rem;
+  color: #333;
+}
+
+.response-modal-close {
+  padding: 0.35rem 0.6rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  color: #374151;
+}
+
+.response-modal-close:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #111827;
+}
+
+.response-modal-content {
+  margin: 0;
+  padding: 1.25rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  flex: 1;
+  min-height: 0;
+  color: #333;
+}
+
+.section-actions {
+  margin: -0.5rem 0 1rem 0;
+  font-size: 0.9rem;
+  color: #555;
+}
+
+.section-actions label {
+  cursor: pointer;
+}
+
+.dashboard .error {
+  color: #c62828;
+}
+
+.chart-placeholder,
+.table-placeholder {
+  padding: 1.5rem;
+  text-align: center;
+  color: #4b5563;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  font-size: 0.9rem;
+}
+
+.prompts-table-wrap {
+  overflow-x: auto;
+}
+
+.table-filter {
+  margin-bottom: 0.75rem;
+  padding: 0.4rem 0.6rem;
+  width: 100%;
+  max-width: 400px;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  color: #374151;
+  font-size: 0.875rem;
+}
+
+.prompts-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.prompts-table th,
+.prompts-table td {
+  padding: 0.35rem 0.6rem;
+  text-align: left;
+  border-bottom: 1px solid #e5e7eb;
+  vertical-align: top;
+  line-height: 1.35;
+}
+
+.prompts-table th {
+  color: #4b5563;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.8125rem;
+}
+
+.prompts-table tbody tr[data-competitor-only="true"] {
+  border-left: 3px solid #f59e0b;
+}
+
+.prompts-table tbody tr[data-cited="true"] td:first-child {
+  color: #15803d;
+}
+
+.prompts-table tbody tr:hover {
+  background: #f8fafc;
+}
+
+.nav {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.nav a {
+  color: #4b5563;
+  text-decoration: none;
+  padding: 0.25rem 0;
+}
+
+.nav a:hover,
+.nav a.active {
+  color: #111827;
+  font-weight: 500;
+  background-color: transparent;
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  color: #2563eb;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+  text-decoration: underline;
+  font-size: inherit;
+}
+
+.link-btn:hover {
+  color: #1d4ed8;
+  background-color: transparent;
+}
+
+.drafts-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+@media (max-width: 900px) {
+  .drafts-layout { grid-template-columns: 1fr; }
+}
+
+.draft-detail {
+  background: #f8fafc;
+  padding: 1rem;
+  border-radius: 8px;
+  max-height: 70vh;
+  overflow: auto;
+  border: 1px solid #e5e7eb;
+}
+
+.draft-body {
+  white-space: pre-wrap;
+  font-size: 0.9rem;
+}
+
+.report-summary {
+  max-height: 60vh;
+  overflow: auto;
+}
+
+.detail-section {
+  background: #f8fafc;
+  padding: 1rem 1.25rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  border: 1px solid #e5e7eb;
+}
+
+.detail-section h2 {
+  margin-top: 0;
+  font-size: 1rem;
+  color: #555;
+}
+
+.detail-dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.25rem 1.5rem;
+  margin: 0;
+}
+
+.detail-dl dt {
+  color: #555;
+  font-weight: 500;
+}
+
+.detail-dl dd {
+  margin: 0;
+}
+
+.prompt-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.citations-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.citations-list li {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #e0e0e0;
+  font-size: 0.9rem;
+}
+
+.citations-list .citation-link {
+  color: #2563eb;
+  text-decoration: none;
+}
+
+.citations-list .citation-link:hover {
+  text-decoration: underline;
+  background-color: transparent;
+}
+
+.citation-counts-table {
+  max-width: 400px;
+}
+
+.citation-counts-table .model-name {
+  text-transform: capitalize;
+}
+
+.citation-counts-total {
+  font-weight: 600;
+  border-top: 1px solid #ccc;
+}
+
+.prompts-list-table .citation-counts-cell {
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+
+.citation-count-badge {
+  display: inline-block;
+  margin-right: 0.5rem;
+  padding: 0.2rem 0.4rem;
+  background: #e8e8e8;
+  border-radius: 4px;
+  color: #333;
+}
+
+.citation-count-badge:last-child {
+  margin-right: 0;
+}
+
+.citation-count-empty {
+  color: #999;
+}
+
+.try-live-cell {
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.try-live-cell .try-live-link {
+  display: inline-block;
+  margin-right: 0.5rem;
+  color: #2563eb;
+  text-decoration: none;
+}
+
+.try-live-cell .try-live-link:hover {
+  text-decoration: underline;
+  background-color: transparent;
+}
+
+.try-live-cell .try-live-link:last-child {
+  margin-right: 0;
+}
+
+.try-live-copied {
+  display: inline-block;
+  margin-right: 0.5rem;
+  font-size: 0.75rem;
+  color: #2e7d32;
+}
+
+.citations-by-model {
+  margin-bottom: 1.5rem;
+}
+
+.citations-by-model:last-child {
+  margin-bottom: 0;
+}
+
+.citations-model-heading {
+  font-size: 1rem;
+  margin: 0 0 0.5rem 0;
+  color: #555;
+  text-transform: capitalize;
+}
+
+.submit-url-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.submit-url-input {
+  flex: 1;
+  min-width: 200px;
+  padding: 0.4rem 0.6rem;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  color: #374151;
+  font-size: 0.875rem;
+}
+
+.image-prompts-list {
+  margin: 0.5rem 0 1rem 1.25rem;
+  padding: 0;
+}
+
+.brief-images-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1rem;
+  margin: 0.5rem 0 1rem 0;
+}
+
+.brief-image-fig {
+  margin: 0;
+}
+
+.brief-image-fig img {
+  width: 100%;
+  height: auto;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+}
+
+.brief-image-fig figcaption {
+  font-size: 0.85rem;
+  color: #555;
+  margin-top: 0.25rem;
+}
+
+.profile-edit-form {
+  display: flex;
+  flex-direction: column;
+  max-width: 640px;
+}
+
+.profile-edit-label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 0.25rem;
+}
+
+.profile-competitors-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.profile-competitors-list li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.5rem;
+  background: #f1f5f9;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  border: 1px solid #e2e8f0;
+}
+
+.profile-competitors-list li button {
+  padding: 0 0.25rem;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: #64748b;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.profile-competitors-list li button:hover {
+  color: #dc2626;
+}
+
+/* Light theme: ensure no black/dark hovers anywhere */
+.dashboard a:hover {
+  background-color: transparent;
+}
+
+.dashboard button:hover {
+  background-color: #f1f5f9;
+  color: #111827;
+}
+
+.dashboard .link-btn:hover {
+  background-color: transparent;
+}

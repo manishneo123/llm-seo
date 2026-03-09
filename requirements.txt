@@ -1,0 +1,19 @@
+# Core
+anthropic>=0.39.0
+openai>=1.55.0
+google-genai>=1.0.0
+requests>=2.31.0
+httpx>=0.27.0
+python-dotenv>=1.0.0
+pyyaml>=6.0
+markdown>=3.5.0
+
+# API
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+
+# DB (sqlite3 is stdlib)
+# Optional when scaling: psycopg2-binary, asyncpg
+
+# Scheduling / runners
+# Use cron or GitHub Actions; no extra deps required
