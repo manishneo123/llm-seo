@@ -32,6 +32,38 @@
   color: #444;
 }
 
+.dashboard-stats .stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 1rem;
+}
+
+.stat-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 1rem 1.1rem;
+}
+
+.stat-value {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #1e293b;
+  line-height: 1.2;
+}
+
+.stat-label {
+  font-size: 0.8rem;
+  color: #64748b;
+  margin-top: 0.25rem;
+}
+
+.stat-sub {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  margin-top: 0.15rem;
+}
+
 .section-desc {
   margin: -0.5rem 0 0.75rem 0;
   font-size: 0.9rem;
@@ -275,6 +307,48 @@
   overflow-x: auto;
 }
 
+/* Execution detail: prompt visibility table – keep Prompt and Niche columns separate */
+.execution-visibility-table {
+  table-layout: fixed;
+  width: 100%;
+}
+.execution-visibility-table th.col-prompt,
+.execution-visibility-table td.col-prompt {
+  width: 280px;
+  min-width: 280px;
+  max-width: 280px;
+}
+.execution-visibility-table th.col-niche,
+.execution-visibility-table td.col-niche {
+  width: 140px;
+  min-width: 140px;
+  max-width: 140px;
+}
+.execution-visibility-table td.execution-visibility-prompt-cell,
+.execution-visibility-table td.execution-visibility-niche-cell {
+  overflow: hidden;
+  word-wrap: break-word;
+  word-break: break-word;
+  vertical-align: top;
+  box-sizing: border-box;
+}
+.execution-visibility-table td.execution-visibility-prompt-cell .link-btn {
+  display: block;
+  text-align: left;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.execution-visibility-table td.execution-visibility-prompt-cell .link-btn:hover {
+  white-space: normal;
+  text-overflow: clip;
+}
+.execution-visibility-table td.execution-visibility-niche-cell {
+  white-space: normal;
+}
+
 .table-filter {
   margin-bottom: 0.75rem;
   padding: 0.4rem 0.6rem;
@@ -376,6 +450,15 @@
   border: 1px solid #e5e7eb;
 }
 
+.publish-preview-body h1,
+.publish-preview-body h2,
+.publish-preview-body h3 { margin: 1rem 0 0.5rem 0; font-size: 1.1rem; }
+.publish-preview-body h1 { font-size: 1.25rem; }
+.publish-preview-body p { margin: 0.5rem 0; }
+.publish-preview-body img { max-width: 100%; height: auto; border-radius: 4px; }
+.publish-preview-body ul, .publish-preview-body ol { margin: 0.5rem 0; padding-left: 1.5rem; }
+.publish-preview-body a { color: var(--color-link, #0066cc); }
+
 .draft-body {
   white-space: pre-wrap;
   font-size: 0.9rem;
@@ -397,7 +480,11 @@
 .detail-section h2 {
   margin-top: 0;
   font-size: 1rem;
-  color: #555;
+}
+.detail-section .subsection-heading {
+  font-size: 0.95rem;
+  margin: 1.25rem 0 0.5rem 0;
+  color: #4b5563;
 }
 
 .detail-dl {
@@ -456,9 +543,85 @@
   border-top: 1px solid #ccc;
 }
 
+/* Fixed-width columns on prompts list */
+.prompts-list-table {
+  table-layout: fixed;
+  width: 100%;
+  min-width: 1230px;
+}
+.prompts-list-table th.col-id,
+.prompts-list-table td.col-id {
+  width: 2.5rem;
+  max-width: 2.5rem;
+}
+.prompts-list-table th.col-text,
+.prompts-list-table td.col-text {
+  width: 240px;
+  min-width: 240px;
+  max-width: 240px;
+}
+.prompts-list-table th.col-citations,
+.prompts-list-table td.col-citations {
+  width: 200px;
+  max-width: 200px;
+}
+.prompts-list-table th.col-mentions,
+.prompts-list-table td.col-mentions {
+  width: 200px;
+  max-width: 200px;
+}
+.prompts-list-table th.col-competition,
+.prompts-list-table td.col-competition {
+  width: 140px;
+  max-width: 140px;
+}
+.prompts-list-table th.col-try-live,
+.prompts-list-table td.col-try-live {
+  width: 200px;
+  max-width: 200px;
+}
+.prompts-list-table th.col-created,
+.prompts-list-table td.col-created {
+  width: 10rem;
+  max-width: 10rem;
+}
+.prompts-list-table th.col-niche,
+.prompts-list-table td.col-niche {
+  width: 120px;
+  max-width: 120px;
+}
+.prompts-list-table td.col-id,
+.prompts-list-table td.col-niche,
+.prompts-list-table td.col-text,
+.prompts-list-table td.col-citations,
+.prompts-list-table td.col-mentions,
+.prompts-list-table td.col-competition,
+.prompts-list-table td.col-try-live,
+.prompts-list-table td.col-created {
+  white-space: normal;
+  word-wrap: break-word;
+  word-break: break-word;
+  vertical-align: top;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+.prompts-list-table td.col-text .link-btn {
+  display: block;
+  text-align: left;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.prompts-list-table td.col-text .link-btn:hover {
+  white-space: normal;
+  text-overflow: clip;
+}
 .prompts-list-table .citation-counts-cell {
   font-size: 0.8125rem;
-  white-space: nowrap;
+  white-space: normal;
+  word-wrap: break-word;
+  word-break: break-word;
 }
 
 .citation-count-badge {
@@ -480,12 +643,15 @@
 
 .try-live-cell {
   font-size: 0.85rem;
-  white-space: nowrap;
+  white-space: normal;
+  word-wrap: break-word;
+  word-break: break-word;
 }
 
-.try-live-cell .try-live-link {
+.prompts-list-table .try-live-cell .try-live-link {
   display: inline-block;
   margin-right: 0.5rem;
+  margin-bottom: 0.2rem;
   color: #2563eb;
   text-decoration: none;
 }
@@ -580,6 +746,47 @@
   font-weight: 600;
   color: #374151;
   margin-bottom: 0.25rem;
+}
+
+/* Content source edit form: aligned labels and fields */
+.content-source-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 520px;
+}
+
+.content-source-edit-form .edit-form-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.content-source-edit-form .edit-form-label {
+  flex: 0 0 200px;
+  min-width: 200px;
+  padding-top: 0.35rem;
+  font-size: 0.9rem;
+  color: var(--color-text-secondary, #555);
+}
+
+.content-source-edit-form .edit-form-field {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.content-source-edit-form .edit-form-field input,
+.content-source-edit-form .edit-form-field select {
+  width: 100%;
+  max-width: 280px;
+}
+
+.content-source-edit-form .edit-form-field .field-error {
+  font-size: 0.8rem;
+  color: var(--color-error, #c00);
 }
 
 .profile-competitors-list {

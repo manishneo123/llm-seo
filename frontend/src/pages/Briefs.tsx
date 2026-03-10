@@ -32,6 +32,7 @@ export function Briefs() {
                 <th>Topic</th>
                 <th>Angle</th>
                 <th>Status</th>
+                <th>Draft</th>
                 <th></th>
               </tr>
             </thead>
@@ -46,6 +47,15 @@ export function Briefs() {
                   </td>
                   <td>{b.angle?.slice(0, 60)}{b.angle && b.angle.length > 60 ? '…' : ''}</td>
                   <td>{b.status}</td>
+                  <td>
+                    {b.draft?.id ? (
+                      <button type="button" className="link-btn" onClick={() => navigate(`/drafts/${b.draft!.id}`)}>
+                        View draft →
+                      </button>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
                   <td>
                     <button type="button" className="link-btn" onClick={() => navigate(`/briefs/${b.id}`)}>View details →</button>
                   </td>

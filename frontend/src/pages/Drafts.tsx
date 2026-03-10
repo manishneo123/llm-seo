@@ -43,7 +43,9 @@ export function Drafts() {
                   </td>
                   <td>{d.status}</td>
                   <td>
-                    <button type="button" className="link-btn" onClick={() => navigate(`/drafts/${d.id}`)}>View details →</button>
+                    <button type="button" className="link-btn" onClick={() => navigate(`/drafts/${d.id}`)}>View</button>
+                    {' '}
+                    <button type="button" className="link-btn" onClick={() => navigate(`/drafts/${d.id}/publish`)}>Publish</button>
                   </td>
                 </tr>
               ))}

@@ -32,6 +32,23 @@ export async function getCitationTrends(runLimit = 30): Promise<CitationTrendsRe
   return res.json();
 }
 
+export interface DashboardStats {
+  total_prompts: number;
+  domains_tracked: number;
+  last_run_at: string | null;
+  prompts_with_own_citation: number;
+  prompts_with_brand_mentioned: number;
+  prompts_competitor_only: number;
+  total_own_citations: number;
+  citation_rate_pct: number;
+}
+
+export async function getDashboardStats(): Promise<DashboardStats> {
+  const res = await fetch(`${API_BASE}/api/dashboard/stats`);
+  if (!res.ok) throw new Error('Failed to fetch dashboard stats');
+  return res.json();
+}
+
 export async function getPromptsVisibility(
   runId?: number,
   limit = 200,
@@ -65,6 +82,7 @@ export interface Brief {
   image_urls?: string | null;
   status: string;
   created_at: string;
+  draft?: { id: number } | null;
 }
 
 export async function getBriefs(limit = 50, status?: string): Promise<{ briefs: Brief[] }> {
@@ -85,6 +103,19 @@ export interface Draft {
   created_at: string;
   updated_at: string;
   published_at?: string | null;
+  image_urls?: string | null;
+}
+
+export interface DraftPublication {
+  id: number;
+  content_source_id: number | null;
+  content_source_name: string | null;
+  content_source_type: string | null;
+  published_url: string | null;
+  status: string;
+  error_message: string | null;
+  published_at: string | null;
+  created_at: string;
 }
 
 export interface DraftDetail extends Draft {
@@ -95,6 +126,7 @@ export interface DraftDetail extends Draft {
   verified_at?: string | null;
   brief?: Brief | null;
   prompt?: { id: number; text: string; niche: string | null; created_at: string } | null;
+  publications?: DraftPublication[];
 }
 
 export async function getDrafts(limit = 50, status?: string): Promise<{ drafts: Draft[] }> {
@@ -108,10 +140,12 @@ export async function getDrafts(limit = 50, status?: string): Promise<{ drafts: 
 export async function approveDraft(
   draftId: number,
   publish: boolean,
-  destination?: string
+  destination?: string,
+  contentSourceId?: number
 ): Promise<{ ok: boolean; published?: boolean; error?: string }> {
   const params = new URLSearchParams({ publish: String(publish) });
   if (destination) params.set('destination', destination);
+  if (contentSourceId != null) params.set('content_source_id', String(contentSourceId));
   const res = await fetch(`${API_BASE}/api/drafts/${draftId}/approve?${params}`, { method: 'POST' });
   const data = await res.json();
   if (!res.ok) return { ok: false, error: data.error || 'Request failed' };
@@ -122,6 +156,34 @@ export async function getDraft(id: number): Promise<DraftDetail> {
   const res = await fetch(`${API_BASE}/api/drafts/${id}`);
   if (!res.ok) throw new Error(res.status === 404 ? 'Draft not found' : 'Failed to fetch draft');
   return res.json();
+}
+
+export async function updateDraft(
+  id: number,
+  body: { title?: string; body_md?: string; slug?: string; image_urls?: string[] }
+): Promise<{ id: number; title: string; slug: string; body_md: string; status: string; updated_at: string; image_urls?: string | null }> {
+  const res = await fetch(`${API_BASE}/api/drafts/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || 'Failed to update draft');
+  return data;
+}
+
+export async function publishDraftToSource(
+  draftId: number,
+  params: { content_source_id: number; title?: string; body_md?: string }
+): Promise<{ ok: boolean; published_url?: string }> {
+  const res = await fetch(`${API_BASE}/api/drafts/${draftId}/publish`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || 'Publish failed');
+  return data;
 }
 
 export interface BriefDetail extends Brief {
@@ -215,17 +277,118 @@ export async function getPrompt(id: number): Promise<PromptDetail> {
   return res.json();
 }
 
+export interface ContentSource {
+  id: number;
+  name: string;
+  type: string;
+  config?: Record<string, unknown> | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface CmsOptions {
   wordpress: boolean;
   webflow: boolean;
   ghost: boolean;
   hashnode: boolean;
+  content_sources?: ContentSource[];
 }
 
 export async function getCmsOptions(): Promise<CmsOptions> {
   const res = await fetch(`${API_BASE}/api/cms/options`);
   if (!res.ok) throw new Error('Failed to fetch CMS options');
   return res.json();
+}
+
+export async function listContentSources(): Promise<{ content_sources: ContentSource[] }> {
+  const res = await fetch(`${API_BASE}/api/content-sources`);
+  if (!res.ok) throw new Error('Failed to fetch content sources');
+  return res.json();
+}
+
+export async function getContentSource(id: number): Promise<ContentSource> {
+  const res = await fetch(`${API_BASE}/api/content-sources/${id}`);
+  if (!res.ok) throw new Error(res.status === 404 ? 'Content source not found' : 'Failed to fetch');
+  return res.json();
+}
+
+export async function createContentSource(body: { name: string; type: string; config?: Record<string, unknown> }): Promise<ContentSource> {
+  const res = await fetch(`${API_BASE}/api/content-sources`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || 'Failed to create');
+  return data;
+}
+
+export async function updateContentSource(id: number, body: { name?: string; type?: string; config?: Record<string, unknown> }): Promise<ContentSource> {
+  const res = await fetch(`${API_BASE}/api/content-sources/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || 'Failed to update');
+  return data;
+}
+
+export async function deleteContentSource(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/content-sources/${id}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || 'Failed to delete');
+  }
+}
+
+export async function getContentSourceDomains(sourceId: number): Promise<{ domains: { id: number; domain: string }[] }> {
+  const res = await fetch(`${API_BASE}/api/content-sources/${sourceId}/domains`);
+  if (!res.ok) throw new Error('Failed to fetch domains for source');
+  return res.json();
+}
+
+export async function validateContentSourceCredentials(sourceId: number): Promise<{ ok: boolean; message: string }> {
+  const res = await fetch(`${API_BASE}/api/content-sources/${sourceId}/validate`, { method: 'POST' });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || 'Validation request failed');
+  return data;
+}
+
+export async function validateCmsCredentials(params: { destination: string; config?: Record<string, string> }): Promise<{ ok: boolean; message: string }> {
+  const res = await fetch(`${API_BASE}/api/cms/validate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || 'Validation request failed');
+  return data;
+}
+
+export async function getDomainContentSources(domainId: number): Promise<{ content_sources: ContentSource[] }> {
+  const res = await fetch(`${API_BASE}/api/domains/${domainId}/content-sources`);
+  if (!res.ok) throw new Error('Failed to fetch content sources for domain');
+  return res.json();
+}
+
+export async function addDomainContentSource(domainId: number, contentSourceId: number): Promise<{ ok: boolean }> {
+  const res = await fetch(`${API_BASE}/api/domains/${domainId}/content-sources`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content_source_id: contentSourceId }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || 'Failed to add');
+  return data;
+}
+
+export async function removeDomainContentSource(domainId: number, contentSourceId: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/domains/${domainId}/content-sources/${contentSourceId}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || 'Failed to remove');
+  }
 }
 
 export async function submitPublishedUrl(
@@ -251,9 +414,82 @@ export async function verifyDraftUrl(
   return data;
 }
 
-export async function getWeeklyReport(): Promise<{ summary: string }> {
-  const res = await fetch(`${API_BASE}/api/reports/weekly`);
+export interface ReportDateParams {
+  from_date?: string;
+  to_date?: string;
+}
+
+export async function getWeeklyReport(params?: ReportDateParams): Promise<{ summary: string }> {
+  const sp = new URLSearchParams();
+  if (params?.from_date) sp.set('from_date', params.from_date);
+  if (params?.to_date) sp.set('to_date', params.to_date);
+  const q = sp.toString();
+  const url = `${API_BASE}/api/reports/weekly${q ? `?${q}` : ''}`;
+  const res = await fetch(url);
   if (!res.ok) throw new Error('Failed to fetch report');
+  return res.json();
+}
+
+export interface MonitoringRunReportRow {
+  id: number;
+  started_at: string;
+  finished_at: string | null;
+  status: string;
+  trigger_type: string;
+}
+
+export async function getMonitoringRunsReport(params?: ReportDateParams): Promise<{ rows: MonitoringRunReportRow[] }> {
+  const sp = new URLSearchParams();
+  if (params?.from_date) sp.set('from_date', params.from_date);
+  if (params?.to_date) sp.set('to_date', params.to_date);
+  const q = sp.toString();
+  const url = `${API_BASE}/api/reports/monitoring-runs${q ? `?${q}` : ''}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Failed to fetch monitoring runs report');
+  return res.json();
+}
+
+export interface CitationReportRow {
+  run_id: number;
+  run_date: string;
+  model: string;
+  prompt_id: number;
+  cited_domain: string;
+  is_own_domain: boolean;
+  raw_snippet: string;
+}
+
+export async function getCitationsReport(params?: ReportDateParams): Promise<{ rows: CitationReportRow[] }> {
+  const sp = new URLSearchParams();
+  if (params?.from_date) sp.set('from_date', params.from_date);
+  if (params?.to_date) sp.set('to_date', params.to_date);
+  const q = sp.toString();
+  const url = `${API_BASE}/api/reports/citations${q ? `?${q}` : ''}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Failed to fetch citations report');
+  return res.json();
+}
+
+export interface DraftReportRow {
+  id: number;
+  title: string;
+  slug: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  published_at: string | null;
+  published_url: string;
+  image_urls: string;
+}
+
+export async function getDraftsReport(params?: ReportDateParams): Promise<{ rows: DraftReportRow[] }> {
+  const sp = new URLSearchParams();
+  if (params?.from_date) sp.set('from_date', params.from_date);
+  if (params?.to_date) sp.set('to_date', params.to_date);
+  const q = sp.toString();
+  const url = `${API_BASE}/api/reports/drafts${q ? `?${q}` : ''}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Failed to fetch drafts report');
   return res.json();
 }
 
@@ -386,6 +622,54 @@ export async function generatePrompts(options: { count?: number; prompts_per_dom
   const data = await res.json();
   if (!res.ok) throw new Error(data.detail || 'Prompt generation failed');
   return data;
+}
+
+// ---------- Prompt generation schedule ----------
+export interface PromptGenerationSettings {
+  enabled: boolean;
+  frequency_days: number;
+  prompts_per_domain: number | null;
+  last_run_at: string | null;
+  updated_at: string | null;
+}
+
+export async function getPromptGenerationSettings(): Promise<PromptGenerationSettings> {
+  const res = await fetch(`${API_BASE}/api/prompt-generation/settings`);
+  if (!res.ok) throw new Error('Failed to fetch prompt generation settings');
+  return res.json();
+}
+
+export async function updatePromptGenerationSettings(settings: Partial<PromptGenerationSettings>): Promise<PromptGenerationSettings> {
+  const res = await fetch(`${API_BASE}/api/prompt-generation/settings`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || 'Failed to update settings');
+  return data;
+}
+
+export async function runPromptGenerationNow(): Promise<{ ok: boolean; inserted: number; run_id?: number }> {
+  const res = await fetch(`${API_BASE}/api/prompt-generation/run`, { method: 'POST' });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || 'Prompt generation run failed');
+  return data;
+}
+
+export interface PromptGenerationRun {
+  id: number;
+  started_at: string;
+  finished_at: string | null;
+  trigger_type: string;
+  status: string;
+  inserted_count: number | null;
+}
+
+export async function getPromptGenerationRuns(limit = 20, offset = 0): Promise<{ runs: PromptGenerationRun[]; total: number }> {
+  const res = await fetch(`${API_BASE}/api/prompt-generation/runs?limit=${limit}&offset=${offset}`);
+  if (!res.ok) throw new Error('Failed to fetch prompt generation runs');
+  return res.json();
 }
 
 // ---------- Monitoring ----------

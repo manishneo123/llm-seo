@@ -1,4 +1,4 @@
-"""Run Content agent: load pending briefs, run chain, generate schema, save draft to DB and file."""
+"""Run Content agent: load pending briefs, run chain, generate schema, save draft to DB only."""
 import os
 import sys
 from pathlib import Path
@@ -16,7 +16,7 @@ import json
 
 
 def _inject_images_into_markdown(body_md: str, topic: str, image_urls: list[str]) -> str:
-    """Insert markdown image tags into body. image_urls are paths like data/images/brief_1_0.png -> /api/images/brief_1_0.png."""
+    """Insert markdown image tags into body. image_urls can be S3 URLs (https://...) or local paths -> /api/images/basename."""
     parts = body_md.split("\n\n", 1)
     intro = parts[0]
     rest = parts[1] if len(parts) > 1 else ""
@@ -25,8 +25,11 @@ def _inject_images_into_markdown(body_md: str, topic: str, image_urls: list[str]
         path = (path or "").strip()
         if not path:
             continue
-        basename = path.replace("\\", "/").split("/")[-1]
-        url = f"/api/images/{basename}"
+        if path.startswith("http://") or path.startswith("https://"):
+            url = path
+        else:
+            basename = path.replace("\\", "/").split("/")[-1]
+            url = f"/api/images/{basename}"
         alt = topic[:80] if i == 0 else f"{topic[:50]} image {i + 1}"
         blocks.append(f"![{alt}]({url})")
     if not blocks:
@@ -39,14 +42,12 @@ def slugify(title: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
 
 
-def run(limit: int = 5, output_dir: Path | None = None):
-    output_dir = output_dir or Path(__file__).resolve().parents[2] / "drafts"
-    output_dir.mkdir(parents=True, exist_ok=True)
+def run(limit: int = 5):
     conn = get_connection()
     init_db(conn)
 
     rows = conn.execute(
-        "SELECT id, topic, angle, suggested_headings, entities_to_mention, schema_to_add, image_urls FROM content_briefs WHERE status = 'pending' ORDER BY priority_score DESC LIMIT ?",
+        "SELECT id, topic, angle, suggested_headings, entities_to_mention, schema_to_add, image_prompts, image_urls FROM content_briefs WHERE status = 'pending' ORDER BY priority_score DESC LIMIT ?",
         (limit,),
     ).fetchall()
     if not rows:
@@ -72,28 +73,48 @@ def run(limit: int = 5, output_dir: Path | None = None):
         if not (body_md or "").strip():
             print("  -> skipped (no content generated)")
             continue
-        image_urls_json = r["image_urls"] if "image_urls" in r.keys() else None
-        if image_urls_json:
+        image_urls = []
+        image_prompts_json = r.get("image_prompts") if "image_prompts" in r.keys() else None
+        image_urls_json = r.get("image_urls") if "image_urls" in r.keys() else None
+        if image_prompts_json:
+            try:
+                prompts = json.loads(image_prompts_json)
+                if isinstance(prompts, list) and prompts:
+                    from src.content.image_gen import generate_images_for_brief
+                    generated = generate_images_for_brief(brief_id, prompts[:5])
+                    if generated:
+                        conn.execute(
+                            "UPDATE content_briefs SET image_urls = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                            (json.dumps(generated), brief_id),
+                        )
+                        conn.commit()
+                        image_urls = generated
+                        print("  -> generated {} images".format(len(generated)))
+            except (TypeError, json.JSONDecodeError, Exception):
+                pass
+        if not image_urls and image_urls_json:
             try:
                 image_urls = json.loads(image_urls_json)
-                if isinstance(image_urls, list) and image_urls:
-                    body_md = _inject_images_into_markdown(body_md, topic, image_urls)
+                if not isinstance(image_urls, list):
+                    image_urls = []
             except (TypeError, json.JSONDecodeError):
-                pass
+                image_urls = []
+        if image_urls:
+            body_md = _inject_images_into_markdown(body_md, topic, image_urls)
         title = topic
         slug = slugify(title)
         schema_json = generate_schema(schema_type, title, body_md, slug)
+        image_urls_json = json.dumps(image_urls) if image_urls else None
         cur = conn.execute(
-            """INSERT INTO drafts (brief_id, title, slug, body_md, schema_json, status) VALUES (?, ?, ?, ?, ?, 'draft')""",
-            (brief_id, title, slug, body_md, schema_json),
+            """INSERT INTO drafts (brief_id, title, slug, body_md, schema_json, status, image_urls) VALUES (?, ?, ?, ?, ?, 'draft', ?)""",
+            (brief_id, title, slug, body_md, schema_json, image_urls_json),
         )
         draft_id = cur.lastrowid
         conn.execute("UPDATE content_briefs SET status = 'in_progress' WHERE id = ?", (brief_id,))
         conn.commit()
-        (output_dir / f"draft_{draft_id}.md").write_text(f"# {title}\n\n{body_md}", encoding="utf-8")
-        print("  -> draft_{}.md".format(draft_id))
+        print("  -> draft {} saved to DB".format(draft_id))
     conn.close()
-    print("Drafts saved to DB and", output_dir)
+    print("Drafts saved to DB.")
 
 
 if __name__ == "__main__":

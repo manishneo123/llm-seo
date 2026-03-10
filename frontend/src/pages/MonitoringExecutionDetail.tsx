@@ -84,12 +84,16 @@ export function MonitoringExecutionDetail() {
         <section className="section detail-section">
           <h2>Prompt visibility for this execution</h2>
           <p className="section-desc">For each prompt, visibility (cited / brand mentioned / competitor-only) per model in this run.</p>
-          <div style={{ overflowX: 'auto' }}>
-            <table className="prompts-table prompts-list-table">
+          <div className="prompts-table-wrap">
+            <table className="prompts-table execution-visibility-table">
+              <colgroup>
+                <col className="col-prompt" style={{ width: '280px' }} />
+                <col className="col-niche" style={{ width: '140px' }} />
+              </colgroup>
               <thead>
                 <tr>
-                  <th>Prompt</th>
-                  <th>Niche</th>
+                  <th className="col-prompt">Prompt</th>
+                  <th className="col-niche">Niche</th>
                   {execution.runs.map((r) => (
                     <th key={r.id} colSpan={3} style={{ textAlign: 'center' }}>
                       {r.model}
@@ -97,8 +101,8 @@ export function MonitoringExecutionDetail() {
                   ))}
                 </tr>
                 <tr>
-                  <th></th>
-                  <th></th>
+                  <th className="col-prompt"></th>
+                  <th className="col-niche"></th>
                   {execution.runs.flatMap((r) => [
                     <th key={`${r.id}-cite`} style={{ fontWeight: 500, fontSize: '0.8rem' }}>Cited</th>,
                     <th key={`${r.id}-brand`} style={{ fontWeight: 500, fontSize: '0.8rem' }}>Brand</th>,
@@ -111,18 +115,17 @@ export function MonitoringExecutionDetail() {
                   const byModel = Object.fromEntries(pv.visibility_by_run.map((v) => [v.model, v]));
                   return (
                     <tr key={pv.prompt_id}>
-                      <td>
+                      <td className="col-prompt execution-visibility-prompt-cell">
                         <button
                           type="button"
                           className="link-btn"
                           onClick={() => navigate(`/prompts/${pv.prompt_id}`)}
-                          style={{ maxWidth: '320px', display: 'block', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}
                           title={pv.text}
                         >
                           {pv.text.slice(0, 56)}{pv.text.length > 56 ? '…' : ''}
                         </button>
                       </td>
-                      <td>{pv.niche ? pv.niche.slice(0, 24) + (pv.niche.length > 24 ? '…' : '') : '—'}</td>
+                      <td className="col-niche execution-visibility-niche-cell">{pv.niche ? pv.niche.slice(0, 24) + (pv.niche.length > 24 ? '…' : '') : '—'}</td>
                       {execution.runs.flatMap((r) => {
                         const v = byModel[r.model];
                         return [

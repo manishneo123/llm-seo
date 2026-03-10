@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getBrief, generateBriefImages, type BriefDetail } from '../api/client';
+import { getBrief, type BriefDetail } from '../api/client';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
@@ -19,7 +19,6 @@ export function BriefDetail() {
   const navigate = useNavigate();
   const [brief, setBrief] = useState<BriefDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [imageActioning, setImageActioning] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
 
   useEffect(() => {
@@ -30,21 +29,6 @@ export function BriefDetail() {
       .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load'); });
     return () => { cancelled = true; };
   }, [id]);
-
-  const handleGenerateImages = async () => {
-    if (!brief) return;
-    setError(null);
-    setImageActioning(true);
-    try {
-      await generateBriefImages(brief.id);
-      const b = await getBrief(brief.id);
-      setBrief(b);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to generate images');
-    } finally {
-      setImageActioning(false);
-    }
-  };
 
   const briefAsText = brief
     ? `# ${brief.topic}\n\n**Priority:** ${brief.priority_score} · **Status:** ${brief.status} · **Created:** ${brief.created_at}\n\n## Angle\n${brief.angle || '—'}\n\n## Suggested headings\n${brief.suggested_headings || '—'}\n\n## Entities to mention\n${brief.entities_to_mention || '—'}\n\n## Schema to add\n${brief.schema_to_add || '—'}\n\n${brief.prompt ? `## Source prompt\n${brief.prompt.text}\n\n**Niche:** ${brief.prompt.niche || '—'}` : ''}`
@@ -81,53 +65,31 @@ export function BriefDetail() {
             {copyFeedback ?? 'Copy brief'}
           </button>
           <button type="button" onClick={handleDownloadBrief}>Download brief</button>
+          {brief.draft && (
+            <button type="button" className="link-btn" onClick={() => navigate(`/drafts/${brief.draft!.id}`)}>
+              View draft →
+            </button>
+          )}
         </div>
       </header>
 
       <section className="section detail-section">
-        <h2>Images</h2>
+        <h2>Image prompts</h2>
         {(() => {
           const prompts = parseJsonArray(brief.image_prompts);
-          const urls = parseJsonArray(brief.image_urls);
           return (
             <div className="brief-images-section">
-              {prompts.length > 0 && (
+              {prompts.length > 0 ? (
                 <>
-                  <p><strong>Image prompts:</strong></p>
+                  <p className="section-desc">Images are generated automatically when the draft is created. They are stored and shown on the draft page.</p>
                   <ul className="image-prompts-list">
                     {prompts.map((p, i) => (
                       <li key={i}>{p}</li>
                     ))}
                   </ul>
                 </>
-              )}
-              {urls.length > 0 && (
-                <div className="brief-images">
-                  <p><strong>Generated images:</strong></p>
-                  <div className="brief-images-grid">
-                    {urls.map((path, i) => {
-                      const basename = path.replace(/^.*[/\\]/, '');
-                      return (
-                        <figure key={i} className="brief-image-fig">
-                          <img src={`${API_BASE}/api/images/${basename}`} alt={brief.topic} />
-                          <figcaption>Image {i + 1}</figcaption>
-                        </figure>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-              {prompts.length > 0 && (
-                <button
-                  type="button"
-                  disabled={imageActioning}
-                  onClick={handleGenerateImages}
-                >
-                  {imageActioning ? 'Generating…' : 'Generate images'}
-                </button>
-              )}
-              {prompts.length === 0 && urls.length === 0 && (
-                <p>No image prompts. The brief generator can suggest prompts when creating the brief.</p>
+              ) : (
+                <p className="section-desc">No image prompts. The brief generator can suggest prompts when creating the brief.</p>
               )}
             </div>
           );

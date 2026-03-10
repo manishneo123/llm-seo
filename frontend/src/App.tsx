@@ -4,6 +4,7 @@ import { Briefs } from './pages/Briefs'
 import { BriefDetail } from './pages/BriefDetail'
 import { Drafts } from './pages/Drafts'
 import { DraftDetail } from './pages/DraftDetail'
+import { PublishDraft } from './pages/PublishDraft'
 import { Prompts } from './pages/Prompts'
 import { PromptDetail } from './pages/PromptDetail'
 import { GeneratePrompts } from './pages/GeneratePrompts'
@@ -11,6 +12,8 @@ import { Reports } from './pages/Reports'
 import { Domains } from './pages/Domains'
 import { Monitoring } from './pages/Monitoring'
 import { MonitoringExecutionDetail } from './pages/MonitoringExecutionDetail'
+import { PromptGeneration } from './pages/PromptGeneration'
+import { ContentSources } from './pages/ContentSources'
 import './App.css'
 
 function App() {
@@ -22,6 +25,8 @@ function App() {
         <NavLink to="/prompts" className={({ isActive }) => isActive ? 'active' : ''}>Prompts</NavLink>
         <NavLink to="/briefs" className={({ isActive }) => isActive ? 'active' : ''}>Briefs</NavLink>
         <NavLink to="/drafts" className={({ isActive }) => isActive ? 'active' : ''}>Drafts</NavLink>
+        <NavLink to="/content-sources" className={({ isActive }) => isActive ? 'active' : ''}>Content sources</NavLink>
+        <NavLink to="/prompt-generation" className={({ isActive }) => isActive ? 'active' : ''}>Prompt generation</NavLink>
         <NavLink to="/monitoring" className={({ isActive }) => isActive ? 'active' : ''}>Monitoring</NavLink>
         <NavLink to="/reports" className={({ isActive }) => isActive ? 'active' : ''}>Reports</NavLink>
       </nav>
@@ -35,6 +40,9 @@ function App() {
         <Route path="/briefs/:id" element={<BriefDetail />} />
         <Route path="/drafts" element={<Drafts />} />
         <Route path="/drafts/:id" element={<DraftDetail />} />
+        <Route path="/drafts/:id/publish" element={<PublishDraft />} />
+        <Route path="/content-sources" element={<ContentSources />} />
+        <Route path="/prompt-generation" element={<PromptGeneration />} />
         <Route path="/monitoring" element={<Monitoring />} />
         <Route path="/monitoring/executions/:id" element={<MonitoringExecutionDetail />} />
         <Route path="/reports" element={<Reports />} />

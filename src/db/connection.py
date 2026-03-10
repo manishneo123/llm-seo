@@ -32,13 +32,22 @@ def _migrate_drafts_publication_columns(conn: sqlite3.Connection) -> None:
 
 
 def _migrate_briefs_image_columns(conn: sqlite3.Connection) -> None:
-    """Add image_prompts and image_urls to content_briefs if missing (JSON arrays)."""
+    """Add image_prompts, image_urls, and updated_at to content_briefs if missing (JSON arrays)."""
     cur = conn.execute("PRAGMA table_info(content_briefs)")
     names = {row[1] for row in cur.fetchall()}
-    for col, typ in [("image_prompts", "TEXT"), ("image_urls", "TEXT")]:
+    for col, typ in [("image_prompts", "TEXT"), ("image_urls", "TEXT"), ("updated_at", "TIMESTAMP")]:
         if col not in names:
             conn.execute(f"ALTER TABLE content_briefs ADD COLUMN {col} {typ}")
     conn.commit()
+
+
+def _migrate_drafts_image_urls(conn: sqlite3.Connection) -> None:
+    """Add image_urls to drafts if missing (JSON array of image URLs)."""
+    cur = conn.execute("PRAGMA table_info(drafts)")
+    names = {row[1] for row in cur.fetchall()}
+    if "image_urls" not in names:
+        conn.execute("ALTER TABLE drafts ADD COLUMN image_urls TEXT")
+        conn.commit()
 
 
 def _migrate_citations_is_own_domain(conn: sqlite3.Connection) -> None:
@@ -204,6 +213,94 @@ def _migrate_monitoring_tables(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _migrate_prompt_generation_settings(conn: sqlite3.Connection) -> None:
+    """Create prompt_generation_settings singleton if missing."""
+    cur = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='prompt_generation_settings'"
+    )
+    if cur.fetchone():
+        return
+    conn.execute("""
+        CREATE TABLE prompt_generation_settings (
+          id INTEGER PRIMARY KEY CHECK (id = 1),
+          enabled INTEGER DEFAULT 0,
+          frequency_days REAL NOT NULL DEFAULT 7,
+          prompts_per_domain INTEGER,
+          last_run_at TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.execute(
+        "INSERT OR IGNORE INTO prompt_generation_settings (id, enabled, frequency_days) VALUES (1, 0, 7)"
+    )
+    cur = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='prompt_generation_runs'"
+    )
+    if not cur.fetchone():
+        conn.execute("""
+            CREATE TABLE prompt_generation_runs (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              finished_at TIMESTAMP,
+              trigger_type TEXT DEFAULT 'manual',
+              status TEXT DEFAULT 'running',
+              inserted_count INTEGER
+            )
+        """)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_prompt_generation_runs_started ON prompt_generation_runs(started_at)"
+        )
+    conn.commit()
+
+
+def _migrate_content_sources_tables(conn: sqlite3.Connection) -> None:
+    """Create content_sources, domain_content_source, draft_publications if missing."""
+    cur = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='content_sources'"
+    )
+    if cur.fetchone():
+        return
+    conn.execute("""
+        CREATE TABLE content_sources (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          type TEXT NOT NULL,
+          config TEXT,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE domain_content_source (
+          domain_id INTEGER NOT NULL,
+          content_source_id INTEGER NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (domain_id, content_source_id),
+          FOREIGN KEY (domain_id) REFERENCES domains(id) ON DELETE CASCADE,
+          FOREIGN KEY (content_source_id) REFERENCES content_sources(id) ON DELETE CASCADE
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE draft_publications (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          draft_id INTEGER NOT NULL,
+          content_source_id INTEGER,
+          published_url TEXT,
+          status TEXT NOT NULL,
+          error_message TEXT,
+          published_at TIMESTAMP,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (draft_id) REFERENCES drafts(id) ON DELETE CASCADE,
+          FOREIGN KEY (content_source_id) REFERENCES content_sources(id) ON DELETE SET NULL
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_domain_content_source_domain ON domain_content_source(domain_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_domain_content_source_source ON domain_content_source(content_source_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_draft_publications_draft ON draft_publications(draft_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_draft_publications_source ON draft_publications(content_source_id)")
+    conn.commit()
+
+
 def init_db(conn: sqlite3.Connection | None = None) -> None:
     if conn is None:
         conn = get_connection()
@@ -212,9 +309,12 @@ def init_db(conn: sqlite3.Connection | None = None) -> None:
     conn.commit()
     _migrate_drafts_publication_columns(conn)
     _migrate_briefs_image_columns(conn)
+    _migrate_drafts_image_urls(conn)
     _migrate_citations_is_own_domain(conn)
     _migrate_run_prompt_visibility(conn)
     _migrate_run_prompt_mentions(conn)
     _migrate_run_prompt_responses(conn)
     _migrate_domains_and_profiles(conn)
     _migrate_monitoring_tables(conn)
+    _migrate_prompt_generation_settings(conn)
+    _migrate_content_sources_tables(conn)

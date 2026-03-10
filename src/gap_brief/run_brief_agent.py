@@ -1,4 +1,4 @@
-"""Run Gap & Brief agent: load uncited prompts, research, generate briefs, store in DB and Markdown."""
+"""Run Gap & Brief agent: load uncited prompts, research, generate briefs, store in DB only."""
 import os
 import sys
 from pathlib import Path
@@ -14,9 +14,7 @@ from src.gap_brief.research import research_query
 from src.gap_brief.brief_generator import generate_brief, store_brief_in_db
 
 
-def run(days: int = 7, limit: int = 10, output_dir: Path | None = None):
-    output_dir = output_dir or Path(__file__).resolve().parents[2] / "briefs"
-    output_dir.mkdir(parents=True, exist_ok=True)
+def run(days: int = 7, limit: int = 10):
     conn = get_connection()
     init_db(conn)
 
@@ -31,31 +29,10 @@ def run(days: int = 7, limit: int = 10, output_dir: Path | None = None):
         research_response, cited_urls = research_query(text)
         brief = generate_brief(text, research_response, cited_urls)
         bid = store_brief_in_db(prompt_id, brief, conn)
-        # Write Markdown to briefs/
-        md = f"""# {brief.get('topic', 'Untitled')}
-Prompt ID: {prompt_id}
-Priority: {brief.get('priority_score', 5)}
-
-## Angle
-{brief.get('angle', '')}
-
-## Required depth
-{brief.get('required_depth', '')}
-
-## Suggested headings
-{brief.get('suggested_headings', '')}
-
-## Entities to mention
-{brief.get('entities_to_mention', '')}
-
-## Schema to add
-{brief.get('schema_to_add', '')}
-"""
-        (output_dir / f"brief_{bid}.md").write_text(md, encoding="utf-8")
         print("Brief {} created for prompt {}: {}".format(bid, prompt_id, brief.get("topic", "")[:50]))
 
     conn.close()
-    print("Done. Briefs in DB and in {}.".format(output_dir))
+    print("Done. Briefs saved to DB.")
 
 
 if __name__ == "__main__":

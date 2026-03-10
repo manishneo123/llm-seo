@@ -28,17 +28,29 @@ def get_citation_rates_by_run(conn, run_ids: list[int]) -> dict[int, float]:
     return rates
 
 
-def generate_weekly_summary() -> str:
-    """Compare recent runs; output text summary of what worked."""
+def generate_weekly_summary(from_date: str | None = None, to_date: str | None = None) -> str:
+    """Compare recent runs; output text summary of what worked.
+    from_date, to_date: optional ISO date strings (YYYY-MM-DD). Filter runs by started_at in range [from_date, to_date].
+    """
     conn = get_connection()
     try:
+        run_where = "status = 'finished' AND prompt_count > 0"
+        run_params: list = []
+        if from_date:
+            run_where += " AND date(started_at) >= date(?)"
+            run_params.append(from_date)
+        if to_date:
+            run_where += " AND date(started_at) <= date(?)"
+            run_params.append(to_date)
+        run_params.append(30)
         runs = conn.execute(
-            """SELECT id, model, started_at, prompt_count FROM runs
-               WHERE status = 'finished' AND prompt_count > 0
-               ORDER BY started_at DESC LIMIT 30"""
+            f"""SELECT id, model, started_at, prompt_count FROM runs
+               WHERE {run_where}
+               ORDER BY started_at DESC LIMIT ?""",
+            tuple(run_params),
         ).fetchall()
         if not runs:
-            return "No finished runs yet. Run the monitor first."
+            return "No finished runs yet for the selected range. Run the monitor first or widen the date range."
         by_model = {}
         for r in runs:
             rate = get_citation_rates_by_run(conn, [r["id"]])[r["id"]]
@@ -55,8 +67,18 @@ def generate_weekly_summary() -> str:
                 lines.append(f"{model}: {latest:.1f}% (prev {prev:.1f}%, delta {delta:+.1f}%)")
             else:
                 lines.append(f"{model}: {points[0][1]:.1f}% (single run)")
+        draft_where = "status IN ('published','approved')"
+        draft_params: list = []
+        if from_date:
+            draft_where += " AND date(updated_at) >= date(?)"
+            draft_params.append(from_date)
+        if to_date:
+            draft_where += " AND date(updated_at) <= date(?)"
+            draft_params.append(to_date)
+        draft_params.append(5)
         drafts = conn.execute(
-            "SELECT id, title, status, published_at FROM drafts WHERE status IN ('published','approved') ORDER BY updated_at DESC LIMIT 5"
+            f"SELECT id, title, status, published_at FROM drafts WHERE {draft_where} ORDER BY updated_at DESC LIMIT ?",
+            tuple(draft_params),
         ).fetchall()
         if drafts:
             lines.append("")

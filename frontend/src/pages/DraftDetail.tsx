@@ -1,26 +1,36 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getDraft, approveDraft, getCmsOptions, submitPublishedUrl, verifyDraftUrl, type DraftDetail, type CmsOptions } from '../api/client';
+import { getDraft, generateBriefImages, type DraftDetail } from '../api/client';
+import { getSourceTypeLabel } from '../constants/cms';
+
+const API_BASE = import.meta.env.VITE_API_URL || '';
+
+function parseJsonArray(s: string | null | undefined): string[] {
+  if (!s) return [];
+  try {
+    const a = JSON.parse(s);
+    return Array.isArray(a) ? a.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
 
 export function DraftDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [draft, setDraft] = useState<DraftDetail | null>(null);
-  const [cmsOptions, setCmsOptions] = useState<CmsOptions | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [actioning, setActioning] = useState(false);
-  const [manualUrl, setManualUrl] = useState('');
-  const [urlActioning, setUrlActioning] = useState(false);
+  const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+  const [generatingImages, setGeneratingImages] = useState(false);
 
   useEffect(() => {
     if (!id) return;
     let cancelled = false;
     async function load() {
       try {
-        const [d, c] = await Promise.all([getDraft(Number(id)), getCmsOptions()]);
+        const d = await getDraft(Number(id));
         if (!cancelled) {
           setDraft(d);
-          setCmsOptions(c);
           setError(null);
         }
       } catch (e) {
@@ -31,65 +41,30 @@ export function DraftDetail() {
     return () => { cancelled = true; };
   }, [id]);
 
-  const handleApprove = async (publish: boolean, destination?: string) => {
+  const handleCopyDraft = () => {
     if (!draft) return;
-    setError(null);
-    setActioning(true);
-    try {
-      const r = await approveDraft(draft.id, publish, destination);
-      if (r.ok) {
-        const d = await getDraft(draft.id);
-        setDraft(d);
-      } else {
-        setError(r.error ?? 'Action failed');
-      }
-    } finally {
-      setActioning(false);
-    }
+    const text = `# ${draft.title}\n\n${draft.body_md ?? ''}`;
+    navigator.clipboard.writeText(text).then(() => setCopyFeedback('Copied!')).catch(() => setCopyFeedback('Failed'));
+    setTimeout(() => setCopyFeedback(null), 2000);
   };
 
-  const handleSubmitUrl = async () => {
-    if (!draft || !manualUrl.trim()) return;
+  const handleGenerateImages = async () => {
+    if (!draft?.brief) return;
     setError(null);
-    setUrlActioning(true);
+    setGeneratingImages(true);
     try {
-      await submitPublishedUrl(draft.id, manualUrl.trim());
-      const d = await getDraft(draft.id);
-      setDraft(d);
-      setManualUrl('');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to submit URL');
-    } finally {
-      setUrlActioning(false);
-    }
-  };
-
-  const handleVerify = async () => {
-    if (!draft) return;
-    setError(null);
-    setUrlActioning(true);
-    try {
-      await verifyDraftUrl(draft.id);
+      await generateBriefImages(draft.brief.id);
       const d = await getDraft(draft.id);
       setDraft(d);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to verify');
+      setError(e instanceof Error ? e.message : 'Failed to generate images');
     } finally {
-      setUrlActioning(false);
+      setGeneratingImages(false);
     }
   };
 
   if (error) return <div className="dashboard"><h1>Draft</h1><p className="error">{error}</p><button type="button" onClick={() => navigate('/drafts')}>← Back to drafts</button></div>;
   if (!draft) return <div className="dashboard"><h1>Draft</h1><p>Loading…</p></div>;
-
-  const cmsDestinations: string[] = cmsOptions
-    ? [
-        cmsOptions.wordpress && 'wordpress',
-        cmsOptions.webflow && 'webflow',
-        cmsOptions.ghost && 'ghost',
-        cmsOptions.hashnode && 'hashnode',
-      ].filter((x): x is string => Boolean(x))
-    : [];
 
   return (
     <div className="dashboard">
@@ -97,6 +72,14 @@ export function DraftDetail() {
         <button type="button" className="link-btn" onClick={() => navigate('/drafts')}>← Drafts</button>
         <h1>{draft.title}</h1>
         <p>Status: {draft.status} · Updated: {draft.updated_at} {draft.published_at ? `· Published: ${draft.published_at}` : ''}</p>
+        <div className="brief-actions" style={{ marginTop: '0.5rem' }}>
+          <button type="button" className="link-btn" onClick={() => navigate(`/drafts/${draft.id}/publish`)}>
+            Prepare &amp; publish →
+          </button>
+          <button type="button" onClick={handleCopyDraft}>
+            {copyFeedback ?? 'Copy draft'}
+          </button>
+        </div>
       </header>
 
       <section className="section detail-section">
@@ -104,6 +87,43 @@ export function DraftDetail() {
         {draft.slug && <p><strong>Slug:</strong> {draft.slug}</p>}
         <pre className="draft-body">{draft.body_md}</pre>
       </section>
+
+      {draft.brief && (
+        <section className="section detail-section">
+          <h2>Generated images</h2>
+          {(() => {
+            const urls = parseJsonArray(draft.image_urls ?? draft.brief?.image_urls);
+            if (urls.length === 0) {
+              return (
+                <>
+                  <p className="section-desc">No images for this draft yet. Generate images from the brief’s image prompts (requires OPENAI_API_KEY).</p>
+                  <button type="button" disabled={generatingImages} onClick={handleGenerateImages}>
+                    {generatingImages ? 'Generating…' : 'Generate images'}
+                  </button>
+                </>
+              );
+            }
+            return (
+              <>
+                <p className="section-desc">Images created for this draft; stored in the project or S3.</p>
+                <div className="brief-images-grid">
+                  {urls.map((path, i) => {
+                    const imgSrc = path.startsWith('http://') || path.startsWith('https://')
+                      ? path
+                      : `${API_BASE}/api/images/${path.replace(/^.*[/\\]/, '')}`;
+                    return (
+                      <figure key={i} className="brief-image-fig">
+                        <img src={imgSrc} alt={draft.brief?.topic ?? 'Draft image'} />
+                        <figcaption>Image {i + 1}</figcaption>
+                      </figure>
+                    );
+                  })}
+                </div>
+              </>
+            );
+          })()}
+        </section>
+      )}
 
       {draft.brief && (
         <section className="section detail-section">
@@ -131,55 +151,35 @@ export function DraftDetail() {
       )}
 
       <section className="section detail-section">
-        <h2>Actions</h2>
-        {draft.status === 'draft' && (
+        <h2>Publishing</h2>
+        <p className="section-desc">Use &quot;Prepare &amp; publish&quot; above to publish. Publication history below.</p>
+        {(draft.publications?.length ?? 0) > 0 && (
           <>
-            <button type="button" disabled={actioning} onClick={() => handleApprove(false)}>Approve only</button>
-            {' '}
-            {cmsDestinations.length > 0 ? (
-              cmsDestinations.map((dest) => (
-                <button key={dest} type="button" disabled={actioning} onClick={() => handleApprove(true, dest)}>
-                  Approve &amp; Publish to {dest}
-                </button>
-              ))
-            ) : (
-              <button type="button" disabled={actioning} onClick={() => handleApprove(true)}>Approve &amp; Publish (default CMS)</button>
-            )}
+            <h3 className="subsection-heading">Publication history</h3>
+            <table className="prompts-table">
+              <thead>
+                <tr>
+                  <th>Source</th>
+                  <th>Type</th>
+                  <th>Status</th>
+                  <th>URL</th>
+                  <th>Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {draft.publications!.map((pub) => (
+                  <tr key={pub.id}>
+                    <td>{pub.content_source_name ?? 'Manual'}</td>
+                    <td>{getSourceTypeLabel(pub.content_source_type)}</td>
+                    <td>{pub.status}</td>
+                    <td>{pub.published_url ? <a href={pub.published_url} target="_blank" rel="noreferrer">{pub.published_url}</a> : pub.error_message ?? '—'}</td>
+                    <td>{pub.published_at ?? pub.created_at}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </>
         )}
-        {draft.status !== 'draft' && <p>No actions available for status: {draft.status}</p>}
-      </section>
-
-      <section className="section detail-section">
-        <h2>Manual publishing</h2>
-        <p>If you published this draft elsewhere (e.g. Figma, another CMS), submit the live URL so we can verify and record it.</p>
-        {draft.published_url && (
-          <p>
-            <strong>Submitted URL:</strong>{' '}
-            <a href={draft.published_url} target="_blank" rel="noreferrer">{draft.published_url}</a>
-            {' · '}
-            <strong>Status:</strong> {draft.verification_status ?? '—'}
-            {draft.verified_at && ` · Verified: ${draft.verified_at}`}
-          </p>
-        )}
-        <div className="submit-url-row">
-          <input
-            type="url"
-            className="submit-url-input"
-            placeholder="https://..."
-            value={manualUrl}
-            onChange={(e) => setManualUrl(e.target.value)}
-            disabled={urlActioning}
-          />
-          <button type="button" disabled={urlActioning || !manualUrl.trim()} onClick={handleSubmitUrl}>
-            Submit URL
-          </button>
-          {draft.published_url && (
-            <button type="button" disabled={urlActioning} onClick={handleVerify}>
-              Re-verify
-            </button>
-          )}
-        </div>
       </section>
     </div>
   );

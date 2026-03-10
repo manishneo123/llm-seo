@@ -116,7 +116,5 @@ PYTHONPATH=. python3 -m src.orchestrator.run --dry-run
 - `src/learning/` — Phase B: collect success data, LLM-generated hints, write `config/learning_hints.yaml`; prompt/brief/distribution read hints
 - `src/orchestrator/` — autonomous loop: state, rules, run discovery/monitor/brief/content/distribution/weekly_report/learning
 - `config/learning_hints.yaml` — written by learning job; prompt_gen_hints, brief_gen_system_extra, channel_weights
-- `data/` — SQLite DB (created on first run); `orchestrator_state.json` (last run times)
-- `briefs/` — Generated briefs (Markdown)
-- `drafts/` — Generated articles pre-review
+- `data/` — SQLite DB (created on first run); briefs and drafts are stored in the DB; `orchestrator_state.json` (last run times)
 # llm-seo

@@ -1,5 +1,4 @@
-"""Generate images from text prompts (OpenAI DALL·E) and save to data/images."""
-import json
+"""Generate images from text prompts (OpenAI DALL·E), save to data/images, and optionally upload to S3."""
 import os
 import sys
 from pathlib import Path
@@ -8,6 +7,46 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 IMAGES_DIR = PROJECT_ROOT / "data" / "images"
+
+S3_IMAGES_PREFIX = "images"
+
+
+def _s3_configured() -> bool:
+    return bool(
+        os.environ.get("AWS_ACCESS_KEY_ID")
+        and os.environ.get("AWS_SECRET_ACCESS_KEY")
+        and os.environ.get("S3_BUCKET")
+    )
+
+
+def _upload_to_s3(local_path: Path, key: str) -> str | None:
+    """Upload file to S3. Returns public URL (https://bucket.s3.region.amazonaws.com/key) or None."""
+    bucket = (os.environ.get("S3_BUCKET") or "").strip()
+    region = (os.environ.get("AWS_REGION") or "us-east-1").strip()
+    if not bucket:
+        return None
+    try:
+        import boto3
+        client = boto3.client(
+            "s3",
+            region_name=region,
+            aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID"),
+            aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
+        )
+        with open(local_path, "rb") as f:
+            client.upload_fileobj(
+                f,
+                bucket,
+                key,
+                ExtraArgs={"ContentType": "image/png", "ACL": "public-read"},
+            )
+        if region == "us-east-1":
+            url = f"https://{bucket}.s3.amazonaws.com/{key}"
+        else:
+            url = f"https://{bucket}.s3.{region}.amazonaws.com/{key}"
+        return url
+    except Exception:
+        return None
 
 
 def generate_image(
@@ -50,6 +89,11 @@ def generate_image(
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_bytes(r.content)
+    if _s3_configured():
+        key = f"{S3_IMAGES_PREFIX}/{output_path.name}"
+        s3_url = _upload_to_s3(output_path, key)
+        if s3_url:
+            return s3_url
     try:
         rel = output_path.relative_to(PROJECT_ROOT)
         return str(rel)

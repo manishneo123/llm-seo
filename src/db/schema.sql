@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS content_briefs (
   image_urls TEXT,
   status TEXT DEFAULT 'pending',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (prompt_id) REFERENCES prompts(id)
 );
 
@@ -66,6 +67,7 @@ CREATE TABLE IF NOT EXISTS drafts (
   published_url TEXT,
   verification_status TEXT,
   verified_at TIMESTAMP,
+  image_urls TEXT,
   FOREIGN KEY (brief_id) REFERENCES content_briefs(id)
 );
 
@@ -179,3 +181,63 @@ CREATE TABLE IF NOT EXISTS monitoring_executions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_monitoring_executions_started ON monitoring_executions(started_at);
+
+-- Prompt generation schedule (singleton: one row id=1)
+CREATE TABLE IF NOT EXISTS prompt_generation_settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  enabled INTEGER DEFAULT 0,
+  frequency_days REAL NOT NULL DEFAULT 7,
+  prompts_per_domain INTEGER,
+  last_run_at TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Prompt generation runs (one row per scheduled or manual run)
+CREATE TABLE IF NOT EXISTS prompt_generation_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  finished_at TIMESTAMP,
+  trigger_type TEXT DEFAULT 'manual',
+  status TEXT DEFAULT 'running',
+  inserted_count INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_prompt_generation_runs_started ON prompt_generation_runs(started_at);
+
+-- Content sources (Hashnode, Ghost, WordPress, Webflow, etc.) – user-created, mapped to domains
+CREATE TABLE IF NOT EXISTS content_sources (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL,
+  config TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Mapping: which content sources are used for which domains (many-to-many)
+CREATE TABLE IF NOT EXISTS domain_content_source (
+  domain_id INTEGER NOT NULL,
+  content_source_id INTEGER NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (domain_id, content_source_id),
+  FOREIGN KEY (domain_id) REFERENCES domains(id) ON DELETE CASCADE,
+  FOREIGN KEY (content_source_id) REFERENCES content_sources(id) ON DELETE CASCADE
+);
+
+-- Record of each publication: draft → content source (or manual URL) with full details
+CREATE TABLE IF NOT EXISTS draft_publications (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  draft_id INTEGER NOT NULL,
+  content_source_id INTEGER,
+  published_url TEXT,
+  status TEXT NOT NULL,
+  error_message TEXT,
+  published_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (draft_id) REFERENCES drafts(id) ON DELETE CASCADE,
+  FOREIGN KEY (content_source_id) REFERENCES content_sources(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_domain_content_source_domain ON domain_content_source(domain_id);
+CREATE INDEX IF NOT EXISTS idx_domain_content_source_source ON domain_content_source(content_source_id);
+CREATE INDEX IF NOT EXISTS idx_draft_publications_draft ON draft_publications(draft_id);
+CREATE INDEX IF NOT EXISTS idx_draft_publications_source ON draft_publications(content_source_id);

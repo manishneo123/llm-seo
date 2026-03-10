@@ -6,7 +6,7 @@ const LIVE_LINKS = [
   { id: 'openai', label: 'ChatGPT', url: 'https://chat.openai.com/' },
   { id: 'perplexity', label: 'Perplexity', url: 'https://www.perplexity.ai/' },
   { id: 'anthropic', label: 'Claude', url: 'https://claude.ai/new' },
-  { id: 'gemini', label: 'Gemini', url: 'https://gemini.google.com/app' },
+  { id: 'gemini', label: 'Gemini', url: 'https://www.google.com/search' },
 ] as const;
 
 function openLiveWithPrompt(promptText: string, link: (typeof LIVE_LINKS)[number]) {
@@ -104,17 +104,28 @@ export function Prompts() {
             No prompts yet. Click &quot;Generate prompts&quot; to create prompts from your domain profiles (run discovery on Domains first).
           </p>
         ) : (
+          <div className="prompts-table-wrap">
           <table className="prompts-table prompts-list-table">
+            <colgroup>
+              <col className="col-id" style={{ width: '2.5rem' }} />
+              <col className="col-text" style={{ width: '240px' }} />
+              <col className="col-niche" style={{ width: '120px' }} />
+              <col className="col-citations" style={{ width: '200px' }} />
+              <col className="col-mentions" style={{ width: '200px' }} />
+              <col className="col-competition" style={{ width: '140px' }} />
+              <col className="col-try-live" style={{ width: '200px' }} />
+              <col className="col-created" style={{ width: '10rem' }} />
+            </colgroup>
             <thead>
               <tr>
-                <th>ID</th>
-                <th>Text</th>
-                <th>Niche</th>
-                <th>Citations (own / other)</th>
-                <th>Mentions (own / other)</th>
-                <th>Competition mentioned</th>
-                <th>Try live</th>
-                <th>Created</th>
+                <th className="col-id">ID</th>
+                <th className="col-text">Text</th>
+                <th className="col-niche">Niche</th>
+                <th className="col-citations">Citations (own / other)</th>
+                <th className="col-mentions">Mentions (own / other)</th>
+                <th className="col-competition">Competition mentioned</th>
+                <th className="col-try-live">Try live</th>
+                <th className="col-created">Created</th>
               </tr>
             </thead>
             <tbody>
@@ -125,14 +136,14 @@ export function Prompts() {
                 const promptText = p.text ?? '';
                 return (
                   <tr key={p.id}>
-                    <td>{p.id}</td>
-                    <td>
+                    <td className="col-id">{p.id}</td>
+                    <td className="col-text">
                       <button type="button" className="link-btn" onClick={() => navigate(`/prompts/${p.id}`)}>
                         {p.text?.slice(0, 60)}{p.text && p.text.length > 60 ? '…' : ''}
                       </button>
                     </td>
-                    <td>{p.niche ?? '—'}</td>
-                    <td className="citation-counts-cell">
+                    <td className="col-niche">{p.niche ?? '—'}</td>
+                    <td className="col-citations citation-counts-cell">
                       {models.map((model) => {
                         const c = counts[model] ?? { own: 0, other: 0 };
                         const hasAny = c.own > 0 || c.other > 0;
@@ -147,7 +158,7 @@ export function Prompts() {
                         <span className="citation-count-empty">—</span>
                       )}
                     </td>
-                    <td className="citation-counts-cell">
+                    <td className="col-mentions citation-counts-cell">
                       {models.map((model) => {
                         const c = mentionCounts[model] ?? { own: 0, other: 0 };
                         const hasAny = c.own > 0 || c.other > 0;
@@ -162,12 +173,12 @@ export function Prompts() {
                         <span className="citation-count-empty">—</span>
                       )}
                     </td>
-                    <td className="competition-mentioned-cell" title={(p.mentioned_competitors ?? []).join(', ') || undefined}>
+                    <td className="col-competition competition-mentioned-cell" title={(p.mentioned_competitors ?? []).join(', ') || undefined}>
                       {(p.mentioned_competitors ?? []).length > 0
                         ? (p.mentioned_competitors ?? []).join(', ')
                         : '—'}
                     </td>
-                    <td className="try-live-cell">
+                    <td className="col-try-live try-live-cell">
                       {copiedId === p.id && <span className="try-live-copied">Copied!</span>}
                       {LIVE_LINKS.map((link) => (
                         <a
@@ -186,12 +197,13 @@ export function Prompts() {
                         </a>
                       ))}
                     </td>
-                    <td>{p.created_at}</td>
+                    <td className="col-created">{p.created_at}</td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
+          </div>
         )}
       </section>
     </div>
