@@ -22,6 +22,7 @@ import { ContentSources } from './pages/ContentSources'
 import { Signin } from './pages/Signin'
 import { Signup } from './pages/Signup'
 import { TryTrial } from './pages/TryTrial'
+import { Terms } from './pages/Terms'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { PageMeta } from './components/PageMeta'
 import './App.css'
@@ -167,6 +168,7 @@ function AppFooter() {
         <span className="app-footer-copy">© {new Date().getFullYear()} TRUSEO</span>
         <nav className="app-footer-links">
           <Link to="/trial-directory">Trial directory</Link>
+          <Link to="/terms">Terms &amp; conditions</Link>
         </nav>
       </div>
     </footer>
@@ -196,6 +198,7 @@ function AppRoutes() {
         <Route path="/signup" element={<Signup />} />
         <Route path="/how-it-works" element={<HowItWorks />} />
         <Route path="/trial-directory" element={<TrialDirectory />} />
+         <Route path="/terms" element={<Terms />} />
         <Route path="/try" element={<TryTrial />} />
         <Route path="/try/:slug" element={<TryTrial />} />
         <Route path="/" element={<HomePage />} />

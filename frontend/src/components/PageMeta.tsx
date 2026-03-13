@@ -78,6 +78,11 @@ const PATH_META: Record<string, MetaEntry> = {
     title: `Settings — ${SITE_NAME}`,
     description: `Manage your ${SITE_NAME} account, API keys, and model settings for OpenAI, Anthropic, Perplexity, and Gemini.`,
   },
+  '/terms': {
+    title: `Terms and Conditions — ${SITE_NAME}`,
+    description:
+      'Read the terms and conditions for using TRUSEO, including trial usage, third-party APIs, acceptable use, and service limitations.',
+  },
 };
 
 function getMetaForPath(pathname: string): MetaEntry {

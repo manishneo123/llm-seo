@@ -10,6 +10,7 @@ from io import BytesIO
 from pathlib import Path
 from urllib.parse import urlparse
 import textwrap
+import logging
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -37,6 +38,14 @@ from api.auth import (
     create_token,
     get_current_user_id,
 )
+
+
+logger = logging.getLogger("truseo.api")
+if not logger.handlers:
+    logging.basicConfig(
+        level=os.environ.get("TRUSEO_LOG_LEVEL", "INFO").upper(),
+        format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+    )
 
 
 def _rewrite_image_urls_in_markdown(body_md: str) -> str:
@@ -1771,6 +1780,13 @@ def _trial_rate_limit_check(conn, ip: str) -> None:
     ).fetchone()
     count = row["cnt"] if row else 0
     if count >= max_per:
+        logger.warning(
+            "trial_rate_limit_block ip=%s count=%s window_min=%s max_per=%s",
+            ip,
+            count,
+            window_min,
+            max_per,
+        )
         raise HTTPException(
             status_code=429,
             detail=f"Too many analyses. Please try again in {window_min} minutes.",
@@ -1810,6 +1826,12 @@ def _trial_queue_backpressure(conn) -> None:
     pending = status.get("pending", 0) or 0
     running = status.get("running", 0) or 0
     if (pending + running) > _trial_max_queue_pending():
+        logger.warning(
+            "trial_queue_block_too_many_tasks pending=%s running=%s max_pending=%s",
+            pending,
+            running,
+            _trial_max_queue_pending(),
+        )
         raise HTTPException(
             status_code=503,
             detail="Too many analyses in progress. Please try again in a few minutes.",
@@ -1821,6 +1843,11 @@ def _trial_queue_backpressure(conn) -> None:
     ).fetchone()
     concurrent = row["cnt"] if row else 0
     if concurrent >= _trial_max_concurrent_runs():
+        logger.warning(
+            "trial_queue_block_too_many_runs concurrent=%s max_concurrent=%s",
+            concurrent,
+            _trial_max_concurrent_runs(),
+        )
         raise HTTPException(
             status_code=503,
             detail="Too many analyses in progress. Please try again in a few minutes.",
@@ -2237,10 +2264,12 @@ def trial_run(request: Request, body: dict = Body(...)):
     Rate-limited per IP; CAPTCHA required if TURNSTILE_SECRET_KEY is set; queue backpressure when busy.
     If the same domain was run in the last 7 days, returns existing results (reused). Returns token, execution_id, slug for canonical URL /try/<slug>."""
     website = (body.get("website") or "").strip()
+    client_ip = _get_client_ip(request)
+    logger.info("trial_run_start ip=%s website=%s", client_ip, website)
     domain = _normalize_website_to_domain(website)
     if not domain:
+        logger.warning("trial_run_invalid_website ip=%s website=%s", client_ip, website)
         raise HTTPException(status_code=400, detail="Invalid or missing website")
-    client_ip = _get_client_ip(request)
     conn = get_connection()
     try:
         init_db(conn)
@@ -2254,6 +2283,12 @@ def trial_run(request: Request, body: dict = Body(...)):
         from src.domain_discovery.crawl import check_domain_reachable
         ok, err_msg = check_domain_reachable(domain)
         if not ok:
+            logger.warning(
+                "trial_run_unreachable_domain ip=%s domain=%s error=%s",
+                client_ip,
+                domain,
+                err_msg,
+            )
             raise HTTPException(status_code=400, detail=err_msg or "Domain does not exist or is not reachable. Please check the URL and try again.")
     except HTTPException:
         conn.close()
@@ -2262,6 +2297,7 @@ def trial_run(request: Request, body: dict = Body(...)):
         conn.close()
         raise HTTPException(status_code=400, detail=f"Could not verify domain: {e!s}")
     slug = _domain_to_slug(domain)
+    logger.info("trial_run_domain_ok ip=%s domain=%s slug=%s", client_ip, domain, slug)
     try:
         # Reuse finished result for this slug if within 7 days
         cur = conn.execute(
@@ -2274,6 +2310,13 @@ def trial_run(request: Request, body: dict = Body(...)):
         row = cur.fetchone()
         if row:
             execution_id = row["execution_id"]
+            logger.info(
+                "trial_run_reuse_execution ip=%s domain=%s slug=%s execution_id=%s",
+                client_ip,
+                domain,
+                slug,
+                execution_id,
+            )
             token = str(uuid.uuid4())
             conn.execute(
                 "INSERT INTO trial_sessions (token, website, slug, execution_id) VALUES (?, ?, ?, ?)",
@@ -2298,8 +2341,22 @@ def trial_run(request: Request, body: dict = Body(...)):
             "SELECT id FROM domains WHERE user_id = ? AND domain = ?",
             (trial_user_id, domain),
         ).fetchone()
+        if not row:
+            logger.error(
+                "trial_run_missing_domain_row ip=%s domain=%s trial_user_id=%s",
+                client_ip,
+                domain,
+                trial_user_id,
+            )
+            raise HTTPException(status_code=500, detail="Internal error: domain row not found after insert.")
         domain_id = row["id"]
         from src.domain_discovery.run_discovery import run_discovery_for_domain
+        logger.info(
+            "trial_run_start_discovery ip=%s domain_id=%s domain=%s",
+            client_ip,
+            domain_id,
+            domain,
+        )
         run_discovery_for_domain(conn, domain_id)
         row = conn.execute(
             """SELECT dp.category, dp.categories, dp.niche, dp.value_proposition, dp.key_topics, dp.target_audience, dp.competitors, dp.discovered_at
@@ -2327,6 +2384,13 @@ def trial_run(request: Request, body: dict = Body(...)):
                 "discovered_at": row["discovered_at"] or "",
             }
         inserted = _run_prompt_generation_sync(conn, trial_user_id, prompts_per_domain=_trial_prompts_count())
+        logger.info(
+            "trial_run_prompt_generation ip=%s domain=%s trial_user_id=%s prompts_inserted=%s",
+            client_ip,
+            domain,
+            trial_user_id,
+            inserted,
+        )
         if inserted == 0:
             from src.monitor.query_runner import get_available_models
             from src.monitor.prompt_generator import load_domain_profiles
@@ -2350,6 +2414,12 @@ def trial_run(request: Request, body: dict = Body(...)):
             (trial_user_id, json.dumps(settings_snapshot)),
         )
         execution_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        logger.info(
+            "trial_run_execution_created ip=%s domain=%s execution_id=%s",
+            client_ip,
+            domain,
+            execution_id,
+        )
         token = str(uuid.uuid4())
         conn.execute(
             "INSERT INTO trial_sessions (token, website, slug, execution_id) VALUES (?, ?, ?, ?)",
@@ -2364,13 +2434,27 @@ def trial_run(request: Request, body: dict = Body(...)):
             daemon=True,
         )
         t.start()
+        logger.info(
+            "trial_run_background_started ip=%s domain=%s execution_id=%s",
+            client_ip,
+            domain,
+            execution_id,
+        )
         out = {"token": token, "execution_id": execution_id, "slug": slug, "reused": False}
         if discovery is not None:
             out["discovery"] = discovery
         return out
-    except HTTPException:
+    except HTTPException as e:
+        logger.warning(
+            "trial_run_http_error ip=%s domain=%s detail=%s status=%s",
+            client_ip,
+            domain,
+            getattr(e, "detail", None),
+            e.status_code,
+        )
         raise
     except Exception as e:
+        logger.exception("trial_run_unexpected_error ip=%s domain=%s", client_ip, domain)
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         conn.close()
