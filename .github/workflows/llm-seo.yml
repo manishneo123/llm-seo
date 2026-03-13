@@ -1,0 +1,67 @@
+name: llm-seo-aws
+
+on:
+  push:
+    tags:
+      - '*llmseo*'
+
+env:
+  AWS_REGION: ap-south-1
+  ECR_REPOSITORY: llmseo    
+  SERVICE_NAME: llmseo          # docker-compose service name
+  REMOTE_COMPOSE_DIR: /opt/llm_evaluation_samples
+  FORCE_COLOR: 3
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_SANDBOX }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY_PROD_SANDBOX }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push Docker image
+        env:
+          ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID_PROD_SANDBOX}}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+        run: |
+          IMAGE_URI=$ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest
+
+          docker build -f Dockerfile \
+            -t "$IMAGE_URI" .
+
+          docker push "$IMAGE_URI"
+
+          echo "image_uri=$IMAGE_URI" >> $GITHUB_OUTPUT
+
+      - name: Deploy on EC2 via docker compose
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+
+            export AWS_REGION=${{ env.AWS_REGION }}
+            export AWS_ACCOUNT_ID=${{ secrets.AWS_ACCOUNT_ID_PROD_SANDBOX }}
+
+            cd ${{ env.REMOTE_COMPOSE_DIR }}
+
+            aws ecr get-login-password --region "$AWS_REGION" \
+              | docker login \
+                --username AWS \
+                --password-stdin "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
+
+            docker compose pull ${{ env.SERVICE_NAME }}
+            docker compose up -d ${{ env.SERVICE_NAME }}
