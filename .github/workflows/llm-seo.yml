@@ -8,7 +8,7 @@ on:
 env:
   AWS_REGION: ap-south-1
   ECR_REPOSITORY: llmseo    
-  SERVICE_NAME: llmseo          # docker-compose service name
+  SERVICE_NAME: llm-seo         # docker-compose service name (must match docker-compose.yml)
   REMOTE_COMPOSE_DIR: /opt/llm_evaluation_samples
   FORCE_COLOR: 3
 
