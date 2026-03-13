@@ -10,11 +10,14 @@ def _get_conn(conn: sqlite3.Connection | None = None) -> sqlite3.Connection:
     return conn or get_connection()
 
 
-def get_tracked_domains_from_db(conn: sqlite3.Connection | None = None) -> list[str]:
-    """Return list of domain strings from domains table. Empty if table missing or empty."""
+def get_tracked_domains_from_db(conn: sqlite3.Connection | None = None, user_id: int | None = None) -> list[str]:
+    """Return list of domain strings from domains table. If user_id is set, only that user's domains."""
     c = _get_conn(conn)
     try:
-        rows = c.execute("SELECT domain FROM domains ORDER BY id").fetchall()
+        if user_id is not None:
+            rows = c.execute("SELECT domain FROM domains WHERE user_id = ? ORDER BY id", (user_id,)).fetchall()
+        else:
+            rows = c.execute("SELECT domain FROM domains ORDER BY id").fetchall()
         return [r[0] for r in rows if r[0]]
     except sqlite3.OperationalError:
         return []
@@ -23,11 +26,17 @@ def get_tracked_domains_from_db(conn: sqlite3.Connection | None = None) -> list[
             c.close()
 
 
-def get_brand_names_from_db(conn: sqlite3.Connection | None = None) -> list[str]:
-    """Return merged list of brand_names from all domains. Empty if none."""
+def get_brand_names_from_db(conn: sqlite3.Connection | None = None, user_id: int | None = None) -> list[str]:
+    """Return merged list of brand_names from all domains. If user_id is set, only that user's domains."""
     c = _get_conn(conn)
     try:
-        rows = c.execute("SELECT brand_names FROM domains WHERE brand_names IS NOT NULL AND brand_names != ''").fetchall()
+        if user_id is not None:
+            rows = c.execute(
+                "SELECT brand_names FROM domains WHERE user_id = ? AND brand_names IS NOT NULL AND brand_names != ''",
+                (user_id,),
+            ).fetchall()
+        else:
+            rows = c.execute("SELECT brand_names FROM domains WHERE brand_names IS NOT NULL AND brand_names != ''").fetchall()
         seen: set[str] = set()
         out: list[str] = []
         for r in rows:
@@ -50,37 +59,51 @@ def get_brand_names_from_db(conn: sqlite3.Connection | None = None) -> list[str]
             c.close()
 
 
-def get_domain_profiles_from_db(conn: sqlite3.Connection | None = None) -> list[tuple[str, dict]] | None:
-    """Return list of (domain_string, profile_dict) from domain_profiles. None if no profiles."""
+def get_domain_profiles_from_db(conn: sqlite3.Connection | None = None, user_id: int | None = None) -> list[tuple[str, dict]] | None:
+    """Return list of (domain_string, profile_dict) from domain_profiles. If user_id is set, only that user's domains."""
     c = _get_conn(conn)
     try:
-        rows = c.execute("""
-            SELECT d.domain, dp.category, dp.niche, dp.value_proposition, dp.key_topics,
-                   dp.target_audience, dp.competitors, dp.discovered_at
-            FROM domain_profiles dp
-            JOIN domains d ON d.id = dp.domain_id
-            ORDER BY d.id
-        """).fetchall()
+        if user_id is not None:
+            rows = c.execute("""
+                SELECT d.domain, dp.category, dp.categories, dp.niche, dp.value_proposition, dp.key_topics,
+                       dp.target_audience, dp.competitors, dp.discovered_at
+                FROM domain_profiles dp
+                JOIN domains d ON d.id = dp.domain_id AND d.user_id = ?
+                ORDER BY d.id
+            """, (user_id,)).fetchall()
+        else:
+            rows = c.execute("""
+                SELECT d.domain, dp.category, dp.categories, dp.niche, dp.value_proposition, dp.key_topics,
+                       dp.target_audience, dp.competitors, dp.discovered_at
+                FROM domain_profiles dp
+                JOIN domains d ON d.id = dp.domain_id
+                ORDER BY d.id
+            """).fetchall()
         if not rows:
             return None
         out = []
         for r in rows:
             domain = r[0] or ""
             try:
-                key_topics = json.loads(r[4]) if r[4] else []
+                key_topics = json.loads(r[5]) if r[5] else []
             except (json.JSONDecodeError, TypeError):
                 key_topics = []
             try:
-                competitors = json.loads(r[6]) if r[6] else []
+                competitors = json.loads(r[7]) if r[7] else []
             except (json.JSONDecodeError, TypeError):
                 competitors = []
+            try:
+                categories = json.loads(r[2]) if r[2] else []
+            except (json.JSONDecodeError, TypeError):
+                categories = []
             profile = {
                 "domain": domain,
                 "category": r[1] or "",
-                "niche": r[2] or "",
-                "value_proposition": r[3] or "",
+                "categories": list(categories) if isinstance(categories, list) else [],
+                "niche": r[3] or "",
+                "value_proposition": r[4] or "",
                 "key_topics": list(key_topics) if isinstance(key_topics, list) else [],
-                "target_audience": r[5] or "",
+                "target_audience": r[6] or "",
                 "competitors": list(competitors) if isinstance(competitors, list) else [],
             }
             out.append((domain, profile))
@@ -92,9 +115,9 @@ def get_domain_profiles_from_db(conn: sqlite3.Connection | None = None) -> list[
             c.close()
 
 
-def get_merged_competitors_from_db(conn: sqlite3.Connection | None = None) -> list[str]:
+def get_merged_competitors_from_db(conn: sqlite3.Connection | None = None, user_id: int | None = None) -> list[str]:
     """Return merged list of competitor names from all domain_profiles."""
-    profiles = get_domain_profiles_from_db(conn)
+    profiles = get_domain_profiles_from_db(conn, user_id=user_id)
     if not profiles:
         return []
     seen: set[str] = set()
@@ -108,7 +131,7 @@ def get_merged_competitors_from_db(conn: sqlite3.Connection | None = None) -> li
     return out
 
 
-def discovery_done(conn: sqlite3.Connection | None = None) -> bool:
-    """True if at least one domain has a profile (discovery has been run)."""
-    profiles = get_domain_profiles_from_db(conn)
+def discovery_done(conn: sqlite3.Connection | None = None, user_id: int | None = None) -> bool:
+    """True if at least one domain has a profile (discovery has been run). If user_id is set, only that user's domains."""
+    profiles = get_domain_profiles_from_db(conn, user_id=user_id)
     return bool(profiles)

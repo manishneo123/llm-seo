@@ -105,9 +105,11 @@ def run(limit: int = 5):
         slug = slugify(title)
         schema_json = generate_schema(schema_type, title, body_md, slug)
         image_urls_json = json.dumps(image_urls) if image_urls else None
+        brief_row = conn.execute("SELECT user_id FROM content_briefs WHERE id = ?", (brief_id,)).fetchone()
+        draft_user_id = brief_row["user_id"] if brief_row and brief_row["user_id"] is not None else 1
         cur = conn.execute(
-            """INSERT INTO drafts (brief_id, title, slug, body_md, schema_json, status, image_urls) VALUES (?, ?, ?, ?, ?, 'draft', ?)""",
-            (brief_id, title, slug, body_md, schema_json, image_urls_json),
+            """INSERT INTO drafts (user_id, brief_id, title, slug, body_md, schema_json, status, image_urls) VALUES (?, ?, ?, ?, ?, ?, 'draft', ?)""",
+            (draft_user_id, brief_id, title, slug, body_md, schema_json, image_urls_json),
         )
         draft_id = cur.lastrowid
         conn.execute("UPDATE content_briefs SET status = 'in_progress' WHERE id = ?", (brief_id,))

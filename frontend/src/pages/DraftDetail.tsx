@@ -63,15 +63,15 @@ export function DraftDetail() {
     }
   };
 
-  if (error) return <div className="dashboard"><h1>Draft</h1><p className="error">{error}</p><button type="button" onClick={() => navigate('/drafts')}>← Back to drafts</button></div>;
-  if (!draft) return <div className="dashboard"><h1>Draft</h1><p>Loading…</p></div>;
+  if (error) return <div className="page dashboard"><header className="page-header"><h1 className="page-title">Draft</h1><p className="error">{error}</p><button type="button" className="link-btn" onClick={() => navigate('/drafts')}>← Back to drafts</button></header></div>;
+  if (!draft) return <div className="page dashboard"><p className="page-description">Loading…</p></div>;
 
   return (
-    <div className="dashboard">
-      <header>
+    <div className="page dashboard">
+      <header className="page-header">
         <button type="button" className="link-btn" onClick={() => navigate('/drafts')}>← Drafts</button>
-        <h1>{draft.title}</h1>
-        <p>Status: {draft.status} · Updated: {draft.updated_at} {draft.published_at ? `· Published: ${draft.published_at}` : ''}</p>
+        <h1 className="page-title">{draft.title}</h1>
+        <p className="page-description">Status: {draft.status} · Updated: {draft.updated_at} {draft.published_at ? `· Published: ${draft.published_at}` : ''}</p>
         <div className="brief-actions" style={{ marginTop: '0.5rem' }}>
           <button type="button" className="link-btn" onClick={() => navigate(`/drafts/${draft.id}/publish`)}>
             Prepare &amp; publish →
@@ -83,14 +83,14 @@ export function DraftDetail() {
       </header>
 
       <section className="section detail-section">
-        <h2>Content</h2>
+        <h2 className="section-title">Content</h2>
         {draft.slug && <p><strong>Slug:</strong> {draft.slug}</p>}
         <pre className="draft-body">{draft.body_md}</pre>
       </section>
 
       {draft.brief && (
         <section className="section detail-section">
-          <h2>Generated images</h2>
+          <h2 className="section-title">Generated images</h2>
           {(() => {
             const urls = parseJsonArray(draft.image_urls ?? draft.brief?.image_urls);
             if (urls.length === 0) {

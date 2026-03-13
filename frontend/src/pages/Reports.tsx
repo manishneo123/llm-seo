@@ -161,14 +161,14 @@ export function Reports() {
   };
 
   return (
-    <div className="dashboard">
-      <header>
-        <h1>Reports</h1>
-        <p className="section-desc">View and download reports by type and date range. Leave dates empty for all time.</p>
+    <div className="page dashboard">
+      <header className="page-header">
+        <h1 className="page-title">Reports</h1>
+        <p className="page-description">View and download reports by type and date range. Leave dates empty for all time.</p>
       </header>
 
       <section className="section">
-        <h2 className="subsection-heading">Filters</h2>
+        <h2 className="section-title">Filters</h2>
         <div className="content-source-edit-form" style={{ maxWidth: '520px', marginBottom: '1rem' }}>
           <div className="edit-form-row">
             <span className="edit-form-label">Report type</span>
@@ -176,7 +176,7 @@ export function Reports() {
               <select
                 value={reportType}
                 onChange={(e) => setReportType(e.target.value as ReportType)}
-                className="table-filter"
+                className="form-input"
                 style={{ maxWidth: '220px' }}
               >
                 {REPORT_TYPES.map((t) => (
@@ -192,7 +192,7 @@ export function Reports() {
                 type="date"
                 value={fromDate}
                 onChange={(e) => setFromDate(e.target.value)}
-                className="table-filter"
+                className="form-input"
                 style={{ maxWidth: '160px' }}
               />
             </div>
@@ -204,18 +204,18 @@ export function Reports() {
                 type="date"
                 value={toDate}
                 onChange={(e) => setToDate(e.target.value)}
-                className="table-filter"
+                className="form-input"
                 style={{ maxWidth: '160px' }}
               />
             </div>
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
-          <button type="button" onClick={loadReport} disabled={loading}>
+          <button type="button" className="btn-primary" onClick={loadReport} disabled={loading}>
             {loading ? 'Loading…' : 'Apply'}
           </button>
           {loaded && (
-            <button type="button" onClick={handleDownload}>
+            <button type="button" className="btn-secondary" onClick={handleDownload}>
               Download
             </button>
           )}
@@ -224,8 +224,10 @@ export function Reports() {
       </section>
 
       {loaded && !error && (
-        <section className="section">
-          <h2 className="subsection-heading">Report</h2>
+        <>
+          <hr className="section-divider" />
+          <section className="section">
+            <h2 className="section-title">Report</h2>
           {reportType === 'weekly' && (
             <pre className="draft-body report-summary">{summary || 'No data for the selected range.'}</pre>
           )}
@@ -295,7 +297,7 @@ export function Reports() {
               )}
             </>
           )}
-          {reportType === 'drafts' && (
+            {reportType === 'drafts' && (
             <>
               {draftRows.length === 0 ? (
                 <p className="table-placeholder">No data for the selected range.</p>
@@ -333,7 +335,8 @@ export function Reports() {
               )}
             </>
           )}
-        </section>
+          </section>
+        </>
       )}
     </div>
   );

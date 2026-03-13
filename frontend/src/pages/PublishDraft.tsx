@@ -86,7 +86,6 @@ function imageUrlForMarkdown(path: string): string {
 
 function autoPlaceImages(body: string, imageUrls: string[]): string {
   if (imageUrls.length === 0) return body;
-  const basename = (path: string) => path.replace(/^.*[/\\]/, '');
   const paragraphs = getParagraphs(body);
   if (paragraphs.length === 0) {
     const imageBlocks = imageUrls.map((path, i) => `![Image ${i + 1}](${imageUrlForMarkdown(path)})`);
@@ -240,27 +239,27 @@ export function PublishDraft() {
 
   if (error && !draft) {
     return (
-      <div className="dashboard">
+      <div className="page dashboard">
         <h1>Publish</h1>
         <p className="error">{error}</p>
-        <button type="button" onClick={() => navigate('/drafts')}>← Back to drafts</button>
+        <button type="button" className="btn-secondary" onClick={() => navigate('/drafts')}>← Back to drafts</button>
       </div>
     );
   }
-  if (!draft) return <div className="dashboard"><h1>Publish</h1><p>Loading…</p></div>;
+  if (!draft) return <div className="page dashboard"><p className="page-description">Loading…</p></div>;
 
   return (
-    <div className="dashboard">
-      <header>
+    <div className="page dashboard">
+      <header className="page-header">
         <button type="button" className="link-btn" onClick={() => navigate(`/drafts/${draft.id}`)}>← Draft</button>
-        <h1>Prepare &amp; publish</h1>
-        <p className="section-desc">Edit content, place images, choose a destination, then publish or copy for manual upload.</p>
+        <h1 className="page-title">Prepare &amp; publish</h1>
+        <p className="page-description">Edit content, place images, choose a destination, then publish or copy for manual upload.</p>
       </header>
 
       {error && <p className="error" style={{ marginBottom: '1rem' }}>{error}</p>}
 
       <section className="section detail-section">
-        <h2>Content</h2>
+        <h2 className="section-title">Content</h2>
         <p className="section-desc">Edit title and body below. Save draft to persist changes.</p>
         <label style={{ display: 'block', marginBottom: '0.5rem' }}>
           <strong>Title</strong>
@@ -268,7 +267,7 @@ export function PublishDraft() {
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="table-filter"
+            className="form-input"
             style={{ display: 'block', width: '100%', maxWidth: '560px', marginTop: '0.25rem' }}
           />
         </label>
@@ -282,11 +281,11 @@ export function PublishDraft() {
             style={{ display: 'block', width: '100%', maxWidth: '720px', marginTop: '0.25rem', fontFamily: 'inherit', fontSize: '0.95em' }}
           />
         </label>
-        <button type="button" onClick={handleSaveDraft} disabled={saving}>{saving ? 'Saving…' : 'Save draft'}</button>
+        <button type="button" className="btn-primary" onClick={handleSaveDraft} disabled={saving}>{saving ? 'Saving…' : 'Save draft'}</button>
       </section>
 
       <section className="section detail-section">
-        <h2>Preview</h2>
+        <h2 className="section-title">Preview</h2>
         <p className="section-desc">How the post will look. Images use the same URLs as when published (set PUBLIC_URL in .env for production).</p>
         <div className="publish-preview" style={{ border: '1px solid #ddd', borderRadius: '6px', padding: '1rem 1.25rem', maxWidth: '720px', background: '#fff' }}>
           <h1 style={{ fontSize: '1.5rem', marginBottom: '0.75rem' }}>{title || 'Untitled'}</h1>
@@ -302,7 +301,7 @@ export function PublishDraft() {
 
       {(imageUrls.length > 0 || draft.brief) && (
         <section className="section detail-section">
-          <h2>Images</h2>
+          <h2 className="section-title">Images</h2>
           {imageUrls.length === 0 ? (
             <>
               <p className="section-desc">No images for this draft yet. Generate images from the brief’s image prompts (requires OPENAI_API_KEY).</p>
@@ -351,13 +350,13 @@ export function PublishDraft() {
       )}
 
       <section className="section detail-section">
-        <h2>Publish to content source</h2>
+        <h2 className="section-title">Publish to content source</h2>
         <p className="section-desc">Select a destination and publish. Supported: LinkedIn, Notion, Dev.to, Hashnode, Ghost, WordPress, Webflow. Add sources in Content sources. The current title and body above will be used.</p>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
           <select
             value={selectedSourceId ?? ''}
             onChange={(e) => setSelectedSourceId(e.target.value ? Number(e.target.value) : null)}
-            className="table-filter"
+            className="form-input"
             style={{ minWidth: '220px' }}
           >
             <option value="">Select content source</option>
@@ -371,6 +370,7 @@ export function PublishDraft() {
           </select>
           <button
             type="button"
+            className="btn-primary"
             onClick={handlePublish}
             disabled={publishing || selectedSourceId == null}
           >
@@ -383,9 +383,9 @@ export function PublishDraft() {
       </section>
 
       <section className="section detail-section">
-        <h2>Manual upload</h2>
+        <h2 className="section-title">Manual upload</h2>
         <p className="section-desc">Copy the content and paste it into your blog or CMS. After you publish there, submit the URL below.</p>
-        <button type="button" onClick={handleCopyContent}>{copyFeedback ?? 'Copy content'}</button>
+        <button type="button" className="btn-secondary" onClick={handleCopyContent}>{copyFeedback ?? 'Copy content'}</button>
         <div style={{ marginTop: '0.75rem' }}>
           <label style={{ display: 'block', marginBottom: '0.25rem' }}>Published URL</label>
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -398,7 +398,7 @@ export function PublishDraft() {
               disabled={urlSubmitting}
               style={{ flex: 1, minWidth: '200px', maxWidth: '400px' }}
             />
-            <button type="button" disabled={urlSubmitting || !manualUrl.trim()} onClick={handleSubmitUrl}>
+            <button type="button" className="btn-primary" disabled={urlSubmitting || !manualUrl.trim()} onClick={handleSubmitUrl}>
               {urlSubmitting ? 'Submitting…' : 'Submit URL'}
             </button>
           </div>

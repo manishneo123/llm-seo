@@ -1,5 +1,70 @@
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
+const AUTH_TOKEN_KEY = 'llm_seo_token';
+
+/** Fetch with Authorization Bearer token from localStorage (for authenticated API calls). */
+export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const token = localStorage.getItem(AUTH_TOKEN_KEY);
+  const headers = new Headers(init?.headers);
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  return fetch(input, { ...init, headers });
+}
+
+export function getStoredToken(): string | null {
+  return localStorage.getItem(AUTH_TOKEN_KEY);
+}
+
+export function setStoredToken(token: string): void {
+  localStorage.setItem(AUTH_TOKEN_KEY, token);
+}
+
+export function clearStoredToken(): void {
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+}
+
+export interface User {
+  id: number;
+  email: string;
+  name?: string | null;
+}
+
+export interface AuthResponse {
+  token: string;
+  user: User;
+}
+
+export async function signup(email: string, password: string, name?: string): Promise<AuthResponse> {
+  const res = await apiFetch(`${API_BASE}/api/auth/signup`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password, name: name || undefined }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Signup failed');
+  }
+  return res.json();
+}
+
+export async function signin(email: string, password: string): Promise<AuthResponse> {
+  const res = await apiFetch(`${API_BASE}/api/auth/signin`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Invalid email or password');
+  }
+  return res.json();
+}
+
+export async function getMe(): Promise<User> {
+  const res = await apiFetch(`${API_BASE}/api/auth/me`);
+  if (!res.ok) throw new Error('Not authenticated');
+  return res.json();
+}
+
 export interface RunTrend {
   run_id: number;
   model: string;
@@ -27,7 +92,7 @@ export interface PromptsVisibilityResponse {
 }
 
 export async function getCitationTrends(runLimit = 30): Promise<CitationTrendsResponse> {
-  const res = await fetch(`${API_BASE}/api/citations/trends?run_limit=${runLimit}`);
+  const res = await apiFetch(`${API_BASE}/api/citations/trends?run_limit=${runLimit}`);
   if (!res.ok) throw new Error('Failed to fetch citation trends');
   return res.json();
 }
@@ -44,8 +109,24 @@ export interface DashboardStats {
 }
 
 export async function getDashboardStats(): Promise<DashboardStats> {
-  const res = await fetch(`${API_BASE}/api/dashboard/stats`);
+  const res = await apiFetch(`${API_BASE}/api/dashboard/stats`);
   if (!res.ok) throw new Error('Failed to fetch dashboard stats');
+  return res.json();
+}
+
+export interface LearningSummary {
+  hints: { prompt_gen_hints: string; brief_gen_system_extra: string };
+  top_uplift: Array<{
+    draft_id: number;
+    draft_title: string;
+    citation_delta: number;
+    brand_delta: number | null;
+  }>;
+}
+
+export async function getLearningSummary(): Promise<LearningSummary> {
+  const res = await apiFetch(`${API_BASE}/api/learning/summary`);
+  if (!res.ok) throw new Error('Failed to fetch learning summary');
   return res.json();
 }
 
@@ -58,13 +139,13 @@ export async function getPromptsVisibility(
   if (runId != null) params.set('run_id', String(runId));
   params.set('limit', String(limit));
   if (competitorOnly === true) params.set('competitor_only', 'true');
-  const res = await fetch(`${API_BASE}/api/prompts/visibility?${params}`);
+  const res = await apiFetch(`${API_BASE}/api/prompts/visibility?${params}`);
   if (!res.ok) throw new Error('Failed to fetch prompts visibility');
   return res.json();
 }
 
 export async function getRuns(limit = 20): Promise<{ runs: { id: number; model: string; started_at: string; finished_at: string | null; prompt_count: number; status: string }[] }> {
-  const res = await fetch(`${API_BASE}/api/runs?limit=${limit}`);
+  const res = await apiFetch(`${API_BASE}/api/runs?limit=${limit}`);
   if (!res.ok) throw new Error('Failed to fetch runs');
   return res.json();
 }
@@ -88,7 +169,7 @@ export interface Brief {
 export async function getBriefs(limit = 50, status?: string): Promise<{ briefs: Brief[] }> {
   const params = new URLSearchParams({ limit: String(limit) });
   if (status) params.set('status', status);
-  const res = await fetch(`${API_BASE}/api/briefs?${params}`);
+  const res = await apiFetch(`${API_BASE}/api/briefs?${params}`);
   if (!res.ok) throw new Error('Failed to fetch briefs');
   return res.json();
 }
@@ -132,7 +213,7 @@ export interface DraftDetail extends Draft {
 export async function getDrafts(limit = 50, status?: string): Promise<{ drafts: Draft[] }> {
   const params = new URLSearchParams({ limit: String(limit) });
   if (status) params.set('status', status);
-  const res = await fetch(`${API_BASE}/api/drafts?${params}`);
+  const res = await apiFetch(`${API_BASE}/api/drafts?${params}`);
   if (!res.ok) throw new Error('Failed to fetch drafts');
   return res.json();
 }
@@ -146,14 +227,14 @@ export async function approveDraft(
   const params = new URLSearchParams({ publish: String(publish) });
   if (destination) params.set('destination', destination);
   if (contentSourceId != null) params.set('content_source_id', String(contentSourceId));
-  const res = await fetch(`${API_BASE}/api/drafts/${draftId}/approve?${params}`, { method: 'POST' });
+  const res = await apiFetch(`${API_BASE}/api/drafts/${draftId}/approve?${params}`, { method: 'POST' });
   const data = await res.json();
   if (!res.ok) return { ok: false, error: data.error || 'Request failed' };
   return data;
 }
 
 export async function getDraft(id: number): Promise<DraftDetail> {
-  const res = await fetch(`${API_BASE}/api/drafts/${id}`);
+  const res = await apiFetch(`${API_BASE}/api/drafts/${id}`);
   if (!res.ok) throw new Error(res.status === 404 ? 'Draft not found' : 'Failed to fetch draft');
   return res.json();
 }
@@ -162,7 +243,7 @@ export async function updateDraft(
   id: number,
   body: { title?: string; body_md?: string; slug?: string; image_urls?: string[] }
 ): Promise<{ id: number; title: string; slug: string; body_md: string; status: string; updated_at: string; image_urls?: string | null }> {
-  const res = await fetch(`${API_BASE}/api/drafts/${id}`, {
+  const res = await apiFetch(`${API_BASE}/api/drafts/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -176,7 +257,7 @@ export async function publishDraftToSource(
   draftId: number,
   params: { content_source_id: number; title?: string; body_md?: string }
 ): Promise<{ ok: boolean; published_url?: string }> {
-  const res = await fetch(`${API_BASE}/api/drafts/${draftId}/publish`, {
+  const res = await apiFetch(`${API_BASE}/api/drafts/${draftId}/publish`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params),
@@ -192,7 +273,7 @@ export interface BriefDetail extends Brief {
 }
 
 export async function getBrief(id: number): Promise<BriefDetail> {
-  const res = await fetch(`${API_BASE}/api/briefs/${id}`);
+  const res = await apiFetch(`${API_BASE}/api/briefs/${id}`);
   if (!res.ok) throw new Error(res.status === 404 ? 'Brief not found' : 'Failed to fetch brief');
   return res.json();
 }
@@ -200,7 +281,7 @@ export async function getBrief(id: number): Promise<BriefDetail> {
 export async function generateBriefImages(
   briefId: number
 ): Promise<{ ok: boolean; image_urls?: string[]; error?: string }> {
-  const res = await fetch(`${API_BASE}/api/briefs/${briefId}/generate-images`, { method: 'POST' });
+  const res = await apiFetch(`${API_BASE}/api/briefs/${briefId}/generate-images`, { method: 'POST' });
   const data = await res.json();
   if (!res.ok) throw new Error(data.detail || data.error || 'Failed to generate images');
   return data;
@@ -241,6 +322,7 @@ export interface MentionItem {
 export interface PromptDetail extends PromptListItem {
   runs: {
     id: number;
+    execution_id?: number;
     model: string;
     started_at: string;
     prompt_count: number;
@@ -262,17 +344,19 @@ export interface PromptDetail extends PromptListItem {
 export async function getPrompts(
   limit = 100,
   offset = 0,
-  niche?: string
+  niche?: string,
+  promptGenerationRunId?: number
 ): Promise<{ prompts: PromptListItem[]; total: number }> {
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   if (niche) params.set('niche', niche);
-  const res = await fetch(`${API_BASE}/api/prompts?${params}`);
+  if (promptGenerationRunId != null) params.set('prompt_generation_run_id', String(promptGenerationRunId));
+  const res = await apiFetch(`${API_BASE}/api/prompts?${params}`);
   if (!res.ok) throw new Error('Failed to fetch prompts');
   return res.json();
 }
 
 export async function getPrompt(id: number): Promise<PromptDetail> {
-  const res = await fetch(`${API_BASE}/api/prompts/${id}`);
+  const res = await apiFetch(`${API_BASE}/api/prompts/${id}`);
   if (!res.ok) throw new Error(res.status === 404 ? 'Prompt not found' : 'Failed to fetch prompt');
   return res.json();
 }
@@ -295,25 +379,25 @@ export interface CmsOptions {
 }
 
 export async function getCmsOptions(): Promise<CmsOptions> {
-  const res = await fetch(`${API_BASE}/api/cms/options`);
+  const res = await apiFetch(`${API_BASE}/api/cms/options`);
   if (!res.ok) throw new Error('Failed to fetch CMS options');
   return res.json();
 }
 
 export async function listContentSources(): Promise<{ content_sources: ContentSource[] }> {
-  const res = await fetch(`${API_BASE}/api/content-sources`);
+  const res = await apiFetch(`${API_BASE}/api/content-sources`);
   if (!res.ok) throw new Error('Failed to fetch content sources');
   return res.json();
 }
 
 export async function getContentSource(id: number): Promise<ContentSource> {
-  const res = await fetch(`${API_BASE}/api/content-sources/${id}`);
+  const res = await apiFetch(`${API_BASE}/api/content-sources/${id}`);
   if (!res.ok) throw new Error(res.status === 404 ? 'Content source not found' : 'Failed to fetch');
   return res.json();
 }
 
 export async function createContentSource(body: { name: string; type: string; config?: Record<string, unknown> }): Promise<ContentSource> {
-  const res = await fetch(`${API_BASE}/api/content-sources`, {
+  const res = await apiFetch(`${API_BASE}/api/content-sources`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -324,7 +408,7 @@ export async function createContentSource(body: { name: string; type: string; co
 }
 
 export async function updateContentSource(id: number, body: { name?: string; type?: string; config?: Record<string, unknown> }): Promise<ContentSource> {
-  const res = await fetch(`${API_BASE}/api/content-sources/${id}`, {
+  const res = await apiFetch(`${API_BASE}/api/content-sources/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -335,7 +419,7 @@ export async function updateContentSource(id: number, body: { name?: string; typ
 }
 
 export async function deleteContentSource(id: number): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/content-sources/${id}`, { method: 'DELETE' });
+  const res = await apiFetch(`${API_BASE}/api/content-sources/${id}`, { method: 'DELETE' });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new Error(data.detail || 'Failed to delete');
@@ -343,20 +427,20 @@ export async function deleteContentSource(id: number): Promise<void> {
 }
 
 export async function getContentSourceDomains(sourceId: number): Promise<{ domains: { id: number; domain: string }[] }> {
-  const res = await fetch(`${API_BASE}/api/content-sources/${sourceId}/domains`);
+  const res = await apiFetch(`${API_BASE}/api/content-sources/${sourceId}/domains`);
   if (!res.ok) throw new Error('Failed to fetch domains for source');
   return res.json();
 }
 
 export async function validateContentSourceCredentials(sourceId: number): Promise<{ ok: boolean; message: string }> {
-  const res = await fetch(`${API_BASE}/api/content-sources/${sourceId}/validate`, { method: 'POST' });
+  const res = await apiFetch(`${API_BASE}/api/content-sources/${sourceId}/validate`, { method: 'POST' });
   const data = await res.json();
   if (!res.ok) throw new Error(data.detail || 'Validation request failed');
   return data;
 }
 
 export async function validateCmsCredentials(params: { destination: string; config?: Record<string, string> }): Promise<{ ok: boolean; message: string }> {
-  const res = await fetch(`${API_BASE}/api/cms/validate`, {
+  const res = await apiFetch(`${API_BASE}/api/cms/validate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params),
@@ -367,13 +451,13 @@ export async function validateCmsCredentials(params: { destination: string; conf
 }
 
 export async function getDomainContentSources(domainId: number): Promise<{ content_sources: ContentSource[] }> {
-  const res = await fetch(`${API_BASE}/api/domains/${domainId}/content-sources`);
+  const res = await apiFetch(`${API_BASE}/api/domains/${domainId}/content-sources`);
   if (!res.ok) throw new Error('Failed to fetch content sources for domain');
   return res.json();
 }
 
 export async function addDomainContentSource(domainId: number, contentSourceId: number): Promise<{ ok: boolean }> {
-  const res = await fetch(`${API_BASE}/api/domains/${domainId}/content-sources`, {
+  const res = await apiFetch(`${API_BASE}/api/domains/${domainId}/content-sources`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ content_source_id: contentSourceId }),
@@ -384,7 +468,7 @@ export async function addDomainContentSource(domainId: number, contentSourceId: 
 }
 
 export async function removeDomainContentSource(domainId: number, contentSourceId: number): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/domains/${domainId}/content-sources/${contentSourceId}`, { method: 'DELETE' });
+  const res = await apiFetch(`${API_BASE}/api/domains/${domainId}/content-sources/${contentSourceId}`, { method: 'DELETE' });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new Error(data.detail || 'Failed to remove');
@@ -395,7 +479,7 @@ export async function submitPublishedUrl(
   draftId: number,
   url: string
 ): Promise<{ ok: boolean; url: string; verification_status: string; error?: string }> {
-  const res = await fetch(`${API_BASE}/api/drafts/${draftId}/submit-url`, {
+  const res = await apiFetch(`${API_BASE}/api/drafts/${draftId}/submit-url`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url }),
@@ -408,7 +492,7 @@ export async function submitPublishedUrl(
 export async function verifyDraftUrl(
   draftId: number
 ): Promise<{ ok: boolean; verification_status: string; error?: string }> {
-  const res = await fetch(`${API_BASE}/api/drafts/${draftId}/verify`, { method: 'POST' });
+  const res = await apiFetch(`${API_BASE}/api/drafts/${draftId}/verify`, { method: 'POST' });
   const data = await res.json();
   if (!res.ok) throw new Error(data.detail || 'Failed to verify');
   return data;
@@ -425,7 +509,7 @@ export async function getWeeklyReport(params?: ReportDateParams): Promise<{ summ
   if (params?.to_date) sp.set('to_date', params.to_date);
   const q = sp.toString();
   const url = `${API_BASE}/api/reports/weekly${q ? `?${q}` : ''}`;
-  const res = await fetch(url);
+  const res = await apiFetch(url);
   if (!res.ok) throw new Error('Failed to fetch report');
   return res.json();
 }
@@ -444,7 +528,7 @@ export async function getMonitoringRunsReport(params?: ReportDateParams): Promis
   if (params?.to_date) sp.set('to_date', params.to_date);
   const q = sp.toString();
   const url = `${API_BASE}/api/reports/monitoring-runs${q ? `?${q}` : ''}`;
-  const res = await fetch(url);
+  const res = await apiFetch(url);
   if (!res.ok) throw new Error('Failed to fetch monitoring runs report');
   return res.json();
 }
@@ -465,7 +549,7 @@ export async function getCitationsReport(params?: ReportDateParams): Promise<{ r
   if (params?.to_date) sp.set('to_date', params.to_date);
   const q = sp.toString();
   const url = `${API_BASE}/api/reports/citations${q ? `?${q}` : ''}`;
-  const res = await fetch(url);
+  const res = await apiFetch(url);
   if (!res.ok) throw new Error('Failed to fetch citations report');
   return res.json();
 }
@@ -488,7 +572,7 @@ export async function getDraftsReport(params?: ReportDateParams): Promise<{ rows
   if (params?.to_date) sp.set('to_date', params.to_date);
   const q = sp.toString();
   const url = `${API_BASE}/api/reports/drafts${q ? `?${q}` : ''}`;
-  const res = await fetch(url);
+  const res = await apiFetch(url);
   if (!res.ok) throw new Error('Failed to fetch drafts report');
   return res.json();
 }
@@ -503,13 +587,13 @@ export interface Domain {
 }
 
 export async function getDomains(): Promise<{ domains: Domain[] }> {
-  const res = await fetch(`${API_BASE}/api/domains`);
+  const res = await apiFetch(`${API_BASE}/api/domains`);
   if (!res.ok) throw new Error('Failed to fetch domains');
   return res.json();
 }
 
 export async function createDomain(domain: string, brandNames: string[] = []): Promise<Domain> {
-  const res = await fetch(`${API_BASE}/api/domains`, {
+  const res = await apiFetch(`${API_BASE}/api/domains`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ domain: domain.trim(), brand_names: brandNames }),
@@ -520,13 +604,13 @@ export async function createDomain(domain: string, brandNames: string[] = []): P
 }
 
 export async function getDomain(id: number): Promise<Domain> {
-  const res = await fetch(`${API_BASE}/api/domains/${id}`);
+  const res = await apiFetch(`${API_BASE}/api/domains/${id}`);
   if (!res.ok) throw new Error(res.status === 404 ? 'Domain not found' : 'Failed to fetch domain');
   return res.json();
 }
 
 export async function updateDomain(id: number, domain: string, brandNames: string[]): Promise<Domain> {
-  const res = await fetch(`${API_BASE}/api/domains/${id}`, {
+  const res = await apiFetch(`${API_BASE}/api/domains/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ domain: domain.trim(), brand_names: brandNames }),
@@ -537,7 +621,7 @@ export async function updateDomain(id: number, domain: string, brandNames: strin
 }
 
 export async function deleteDomain(id: number): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/domains/${id}`, { method: 'DELETE' });
+  const res = await apiFetch(`${API_BASE}/api/domains/${id}`, { method: 'DELETE' });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new Error(data.detail || 'Failed to delete domain');
@@ -557,7 +641,7 @@ export interface DomainProfile {
 }
 
 export async function getDomainProfile(domainId: number): Promise<DomainProfile> {
-  const res = await fetch(`${API_BASE}/api/domains/${domainId}/profile`);
+  const res = await apiFetch(`${API_BASE}/api/domains/${domainId}/profile`);
   if (!res.ok) throw new Error(res.status === 404 ? 'Domain not found' : 'Failed to fetch profile');
   return res.json();
 }
@@ -575,7 +659,7 @@ export async function updateDomainProfile(
   domainId: number,
   profile: DomainProfileUpdate
 ): Promise<DomainProfile> {
-  const res = await fetch(`${API_BASE}/api/domains/${domainId}/profile`, {
+  const res = await apiFetch(`${API_BASE}/api/domains/${domainId}/profile`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(profile),
@@ -586,7 +670,7 @@ export async function updateDomainProfile(
 }
 
 export async function runDiscoveryForDomain(domainId: number): Promise<{ ok: boolean; domain?: string; error?: string }> {
-  const res = await fetch(`${API_BASE}/api/domains/${domainId}/discover`, { method: 'POST' });
+  const res = await apiFetch(`${API_BASE}/api/domains/${domainId}/discover`, { method: 'POST' });
   const data = await res.json();
   if (!res.ok) throw new Error(data.detail || 'Discovery failed');
   return data;
@@ -600,13 +684,13 @@ export interface DiscoveryStatus {
 }
 
 export async function getDiscoveryStatus(): Promise<DiscoveryStatus> {
-  const res = await fetch(`${API_BASE}/api/discovery/status`);
+  const res = await apiFetch(`${API_BASE}/api/discovery/status`);
   if (!res.ok) throw new Error('Failed to fetch discovery status');
   return res.json();
 }
 
 export async function runDiscovery(): Promise<{ ok: boolean; profiles_updated: string[] }> {
-  const res = await fetch(`${API_BASE}/api/discovery/run`, { method: 'POST' });
+  const res = await apiFetch(`${API_BASE}/api/discovery/run`, { method: 'POST' });
   const data = await res.json();
   if (!res.ok) throw new Error(data.detail || 'Discovery failed');
   return data;
@@ -614,7 +698,7 @@ export async function runDiscovery(): Promise<{ ok: boolean; profiles_updated: s
 
 // ---------- Prompt generation (gated by discovery) ----------
 export async function generatePrompts(options: { count?: number; prompts_per_domain?: number }): Promise<{ ok: boolean; inserted: number }> {
-  const res = await fetch(`${API_BASE}/api/prompts/generate`, {
+  const res = await apiFetch(`${API_BASE}/api/prompts/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(options),
@@ -634,13 +718,13 @@ export interface PromptGenerationSettings {
 }
 
 export async function getPromptGenerationSettings(): Promise<PromptGenerationSettings> {
-  const res = await fetch(`${API_BASE}/api/prompt-generation/settings`);
+  const res = await apiFetch(`${API_BASE}/api/prompt-generation/settings`);
   if (!res.ok) throw new Error('Failed to fetch prompt generation settings');
   return res.json();
 }
 
 export async function updatePromptGenerationSettings(settings: Partial<PromptGenerationSettings>): Promise<PromptGenerationSettings> {
-  const res = await fetch(`${API_BASE}/api/prompt-generation/settings`, {
+  const res = await apiFetch(`${API_BASE}/api/prompt-generation/settings`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(settings),
@@ -651,7 +735,7 @@ export async function updatePromptGenerationSettings(settings: Partial<PromptGen
 }
 
 export async function runPromptGenerationNow(): Promise<{ ok: boolean; inserted: number; run_id?: number }> {
-  const res = await fetch(`${API_BASE}/api/prompt-generation/run`, { method: 'POST' });
+  const res = await apiFetch(`${API_BASE}/api/prompt-generation/run`, { method: 'POST' });
   const data = await res.json();
   if (!res.ok) throw new Error(data.detail || 'Prompt generation run failed');
   return data;
@@ -667,7 +751,7 @@ export interface PromptGenerationRun {
 }
 
 export async function getPromptGenerationRuns(limit = 20, offset = 0): Promise<{ runs: PromptGenerationRun[]; total: number }> {
-  const res = await fetch(`${API_BASE}/api/prompt-generation/runs?limit=${limit}&offset=${offset}`);
+  const res = await apiFetch(`${API_BASE}/api/prompt-generation/runs?limit=${limit}&offset=${offset}`);
   if (!res.ok) throw new Error('Failed to fetch prompt generation runs');
   return res.json();
 }
@@ -684,13 +768,13 @@ export interface MonitoringSettings {
 }
 
 export async function getMonitoringSettings(): Promise<MonitoringSettings> {
-  const res = await fetch(`${API_BASE}/api/monitoring/settings`);
+  const res = await apiFetch(`${API_BASE}/api/monitoring/settings`);
   if (!res.ok) throw new Error('Failed to fetch monitoring settings');
   return res.json();
 }
 
 export async function updateMonitoringSettings(settings: Partial<MonitoringSettings>): Promise<MonitoringSettings> {
-  const res = await fetch(`${API_BASE}/api/monitoring/settings`, {
+  const res = await apiFetch(`${API_BASE}/api/monitoring/settings`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(settings),
@@ -701,7 +785,7 @@ export async function updateMonitoringSettings(settings: Partial<MonitoringSetti
 }
 
 export async function runMonitoringNow(options?: { models?: string[]; prompt_limit?: number; domain_ids?: number[]; delay_seconds?: number | null }): Promise<{ ok: boolean; execution_id: number }> {
-  const res = await fetch(`${API_BASE}/api/monitoring/run`, {
+  const res = await apiFetch(`${API_BASE}/api/monitoring/run`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(options || {}),
@@ -735,19 +819,171 @@ export interface PromptVisibilityItem {
   visibility_by_run: PromptVisibilityRun[];
 }
 
+export interface TrialDiscovery {
+  category: string;
+  categories: string[];
+  niche: string;
+  value_proposition: string;
+  key_topics: string[];
+  target_audience: string;
+  competitors: string[];
+  discovered_at?: string;
+}
+
+export interface TrialCitation {
+  run_id: number;
+  prompt_id: number;
+  model: string;
+  cited_domain: string;
+  raw_snippet: string | null;
+  is_own_domain: boolean;
+}
+
+export interface TrialMention {
+  run_id: number;
+  prompt_id: number;
+  model: string;
+  mentioned: string;
+  is_own_domain: boolean;
+}
+
+export interface TrialPromptResponse {
+  prompt_id: number;
+  run_id: number;
+  model: string;
+  response_text: string;
+}
+
 export interface MonitoringExecutionDetail extends MonitoringExecution {
   runs: { id: number; execution_id: number | null; model: string; started_at: string; finished_at: string | null; prompt_count: number; status: string }[];
   prompt_visibility?: PromptVisibilityItem[];
+  discovery?: TrialDiscovery;
+  citations?: TrialCitation[];
+  mentions?: TrialMention[];
+  prompt_responses?: TrialPromptResponse[];
 }
 
 export async function getMonitoringExecutions(limit = 20, offset = 0): Promise<{ executions: MonitoringExecution[]; total: number }> {
-  const res = await fetch(`${API_BASE}/api/monitoring/executions?limit=${limit}&offset=${offset}`);
+  const res = await apiFetch(`${API_BASE}/api/monitoring/executions?limit=${limit}&offset=${offset}`);
   if (!res.ok) throw new Error('Failed to fetch executions');
   return res.json();
 }
 
 export async function getMonitoringExecution(id: number): Promise<MonitoringExecutionDetail> {
-  const res = await fetch(`${API_BASE}/api/monitoring/executions/${id}`);
+  const res = await apiFetch(`${API_BASE}/api/monitoring/executions/${id}`);
   if (!res.ok) throw new Error(res.status === 404 ? 'Execution not found' : 'Failed to fetch execution');
   return res.json();
+}
+
+// ---------- Trial (unauthenticated) ----------
+export interface TrialRunResponse {
+  token: string;
+  execution_id: number;
+  slug: string;
+  reused?: boolean;
+  discovery?: TrialDiscovery;
+}
+
+export async function runTrial(website: string, captchaToken?: string | null): Promise<TrialRunResponse> {
+  const body: { website: string; captcha_token?: string } = { website: website.trim() };
+  if (captchaToken && captchaToken.trim()) body.captcha_token = captchaToken.trim();
+  const res = await fetch(`${API_BASE}/api/trial/run`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Trial failed');
+  }
+  return res.json();
+}
+
+export async function getTrialStatus(token: string): Promise<MonitoringExecutionDetail> {
+  const res = await fetch(`${API_BASE}/api/trial/status?token=${encodeURIComponent(token)}`);
+  if (!res.ok) throw new Error(res.status === 404 ? 'Trial session not found' : 'Failed to fetch status');
+  return res.json();
+}
+
+export interface TrialDirectoryItem {
+  slug: string;
+  website: string;
+  finished_at: string;
+  category?: string | null;
+  categories?: string[];
+}
+
+export async function getTrialBySlug(slug: string): Promise<MonitoringExecutionDetail> {
+  const res = await fetch(`${API_BASE}/api/trial/by-slug/${encodeURIComponent(slug)}`);
+  if (!res.ok) throw new Error(res.status === 404 ? 'No recent results for this domain' : 'Failed to load');
+  return res.json();
+}
+
+export async function getTrialDirectory(params?: {
+  q?: string;
+  category?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<{ trials: TrialDirectoryItem[]; total: number }> {
+  const search = new URLSearchParams();
+  if (params?.q) search.set('q', params.q);
+  if (params?.category) search.set('category', params.category);
+  if (params?.limit != null) search.set('limit', String(params.limit));
+  if (params?.offset != null) search.set('offset', String(params.offset));
+  const qs = search.toString();
+  const res = await fetch(`${API_BASE}/api/trial/directory${qs ? `?${qs}` : ''}`);
+  if (!res.ok) throw new Error('Failed to load directory');
+  return res.json();
+}
+
+// ---------- Settings: LLM provider API keys and models ----------
+export interface LlmProviderSettings {
+  openai: string | null;
+  perplexity: string | null;
+  anthropic: string | null;
+  gemini: string | null;
+  openai_model: string | null;
+  perplexity_model: string | null;
+  anthropic_model: string | null;
+  gemini_model: string | null;
+  updated_at: string | null;
+}
+
+export async function getLlmProviderSettings(): Promise<LlmProviderSettings> {
+  const res = await apiFetch(`${API_BASE}/api/settings/llm-providers`);
+  if (!res.ok) throw new Error('Failed to fetch settings');
+  return res.json();
+}
+
+export async function updateLlmProviderSettings(settings: {
+  openai?: string | null;
+  perplexity?: string | null;
+  anthropic?: string | null;
+  gemini?: string | null;
+  openai_model?: string | null;
+  perplexity_model?: string | null;
+  anthropic_model?: string | null;
+  gemini_model?: string | null;
+}): Promise<LlmProviderSettings> {
+  const res = await apiFetch(`${API_BASE}/api/settings/llm-providers`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || 'Failed to update settings');
+  return data;
+}
+
+export type LlmProviderValidationResult = Record<string, { ok: boolean; error?: string }>;
+
+export async function validateLlmProviderSettings(settings: Record<string, string>): Promise<LlmProviderValidationResult> {
+  const res = await apiFetch(`${API_BASE}/api/settings/llm-providers/validate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || 'Validation request failed');
+  return data;
 }

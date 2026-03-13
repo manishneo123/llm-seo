@@ -13,15 +13,16 @@ export function Drafts() {
       .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load'));
   }, []);
 
-  if (error) return <div className="dashboard"><h1>Drafts</h1><p className="error">{error}</p></div>;
+  if (error) return <div className="page dashboard"><header className="page-header"><h1 className="page-title">Drafts</h1><p className="error">{error}</p></header></div>;
 
   return (
-    <div className="dashboard">
-      <header>
-        <h1>Drafts</h1>
-        <p>Review and approve content (Sprint 3). Open a draft to see full details and publish to Ghost, Hashnode, WordPress, or Webflow.</p>
+    <div className="page dashboard">
+      <header className="page-header">
+        <h1 className="page-title">Drafts</h1>
+        <p className="page-description">Review and approve content (Sprint 3). Open a draft to see full details and publish to Ghost, Hashnode, WordPress, or Webflow.</p>
       </header>
       <section className="section">
+        <h2 className="section-title">All drafts</h2>
         {drafts.length === 0 ? (
           <p className="table-placeholder">No drafts. Run the Content agent from briefs.</p>
         ) : (

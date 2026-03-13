@@ -13,15 +13,16 @@ export function Briefs() {
       .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load'));
   }, []);
 
-  if (error) return <div className="dashboard"><h1>Briefs</h1><p className="error">{error}</p></div>;
+  if (error) return <div className="page dashboard"><header className="page-header"><h1 className="page-title">Content briefs</h1><p className="error">{error}</p></header></div>;
 
   return (
-    <div className="dashboard">
-      <header>
-        <h1>Content briefs</h1>
-        <p>Prioritized briefs from uncited prompts (Sprint 2). Open a brief to see full details.</p>
+    <div className="page dashboard">
+      <header className="page-header">
+        <h1 className="page-title">Content briefs</h1>
+        <p className="page-description">Prioritized briefs from uncited prompts (Sprint 2). Open a brief to see full details.</p>
       </header>
       <section className="section">
+        <h2 className="section-title">All briefs</h2>
         {briefs.length === 0 ? (
           <p className="table-placeholder">No briefs yet. Run the Gap & Brief agent.</p>
         ) : (

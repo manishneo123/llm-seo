@@ -2,8 +2,6 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getDiscoveryStatus, generatePrompts } from '../api/client';
 
-const PAGE_SIZE = 20;
-
 export function GeneratePrompts() {
   const navigate = useNavigate();
   const [discoveryDone, setDiscoveryDone] = useState(false);
@@ -36,61 +34,63 @@ export function GeneratePrompts() {
   };
 
   return (
-    <div className="dashboard">
-      <header>
+    <div className="page dashboard">
+      <header className="page-header">
         <button type="button" className="link-btn" onClick={() => navigate('/prompts')}>← Back to prompts</button>
-        <h1>Generate prompts</h1>
-        <p>Create new prompts from your domain profiles. Run discovery on the Domains page first.</p>
+        <h1 className="page-title">Generate prompts</h1>
+        <p className="page-description">Create new prompts from your domain profiles. Run discovery on the Domains page first.</p>
       </header>
 
       {!discoveryDone ? (
         <section className="section detail-section">
           <p className="section-desc">Add domains and run discovery on the Domains page to enable prompt generation.</p>
-          <button type="button" onClick={() => navigate('/domains')}>Go to Domains</button>
+          <button type="button" className="btn-secondary" onClick={() => navigate('/domains')}>Go to Domains</button>
         </section>
       ) : (
         <section className="section detail-section">
-          <h2>Settings</h2>
+          <h2 className="section-title">Settings</h2>
           <p className="section-desc">Choose how many prompts to generate per domain or in total. New prompts will appear in the prompts list.</p>
-          <div className="profile-edit-form" style={{ maxWidth: '480px' }}>
-            <label className="profile-edit-label">Mode</label>
-            <div style={{ marginBottom: '1rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.5rem' }}>
+          <div style={{ maxWidth: '480px' }}>
+            <div className="form-group">
+              <label className="form-label">Mode</label>
+              <div className="form-check" style={{ marginBottom: '0.5rem' }}>
                 <input
                   type="radio"
                   checked={generateMode === 'per_domain'}
                   onChange={() => setGenerateMode('per_domain')}
                 />
-                {' '}Per domain — generate N prompts for each domain (N × number of domains)
-              </label>
-              <label style={{ display: 'block' }}>
+                <span>Per domain — generate N prompts for each domain (N × number of domains)</span>
+              </div>
+              <div className="form-check">
                 <input
                   type="radio"
                   checked={generateMode === 'total'}
                   onChange={() => setGenerateMode('total')}
                 />
-                {' '}Total — generate N prompts in total (using first domain profile)
-              </label>
+                <span>Total — generate N prompts in total (using first domain profile)</span>
+              </div>
             </div>
-            <label className="profile-edit-label">Number of prompts</label>
-            <input
-              type="number"
-              min={1}
-              max={500}
-              value={generateCount}
-              onChange={(e) => setGenerateCount(parseInt(e.target.value, 10) || 10)}
-              className="table-filter"
-              style={{ width: '100px', marginBottom: '1rem' }}
-            />
-            <span className="section-desc" style={{ marginLeft: '0.5rem' }}>
-              {generateMode === 'per_domain' ? 'prompts per domain' : 'prompts total'}
-            </span>
-            {error && <p className="error" style={{ marginTop: '0.75rem' }}>{error}</p>}
-            <div style={{ marginTop: '1.25rem', display: 'flex', gap: '0.5rem' }}>
-              <button type="button" onClick={handleGenerate} disabled={generateRunning}>
+            <div className="form-group">
+              <label className="form-label">Number of prompts</label>
+              <input
+                type="number"
+                min={1}
+                max={500}
+                value={generateCount}
+                onChange={(e) => setGenerateCount(parseInt(e.target.value, 10) || 10)}
+                className="form-input"
+                style={{ width: '100px' }}
+              />
+              <span className="form-hint" style={{ marginLeft: '0.5rem' }}>
+                {generateMode === 'per_domain' ? 'prompts per domain' : 'prompts total'}
+              </span>
+            </div>
+            {error && <p className="form-error">{error}</p>}
+            <div className="form-actions">
+              <button type="button" className="btn-primary" onClick={handleGenerate} disabled={generateRunning}>
                 {generateRunning ? 'Generating…' : 'Generate prompts'}
               </button>
-              <button type="button" onClick={() => navigate('/prompts')}>Cancel</button>
+              <button type="button" className="btn-secondary" onClick={() => navigate('/prompts')}>Cancel</button>
             </div>
           </div>
         </section>

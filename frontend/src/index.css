@@ -1,12 +1,10 @@
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-family: var(--font-sans);
   line-height: 1.5;
   font-weight: 400;
-
   color-scheme: light;
-  color: #213547;
-  background-color: #f8f9fa;
-
+  color: var(--color-text);
+  background: var(--bg-page);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -14,48 +12,67 @@
 }
 
 a {
-  font-weight: 500;
-  color: #2563eb;
+  font-weight: var(--font-medium);
+  color: var(--color-link);
   text-decoration: none;
 }
 a:hover {
-  color: #1d4ed8;
+  color: var(--color-link-hover);
   background-color: transparent;
 }
 
 body {
   margin: 0;
-  display: flex;
-  place-items: center;
   min-width: 320px;
   min-height: 100vh;
-  background-color: #f8f9fa;
+  background: var(--bg-page);
 }
 
 h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
+  font-size: var(--text-2xl);
+  line-height: 1.25;
+  font-weight: var(--font-semibold);
+  color: var(--color-text);
+  margin: 0 0 var(--space-md) 0;
+}
+
+h2 {
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  color: var(--color-text);
+  margin: 0 0 var(--space-sm) 0;
+}
+
+h3 {
+  font-size: var(--text-base);
+  font-weight: var(--font-semibold);
+  color: var(--color-text);
+  margin: 0 0 var(--space-xs) 0;
 }
 
 button {
-  border-radius: 6px;
-  border: 1px solid #d1d5db;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
   padding: 0.5em 1em;
-  font-size: 0.9375em;
-  font-weight: 500;
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
   font-family: inherit;
-  background-color: #fff;
-  color: #213547;
+  background-color: var(--color-surface);
+  color: var(--color-text);
   cursor: pointer;
   transition: border-color 0.2s, background-color 0.2s, color 0.2s;
 }
 button:hover {
-  border-color: #94a3b8;
-  background-color: #f1f5f9;
-  color: #213547;
+  border-color: var(--color-border-focus);
+  background: var(--bg-page);
+  color: var(--color-text);
 }
 button:focus,
 button:focus-visible {
-  outline: 2px solid #2563eb;
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }

@@ -220,25 +220,27 @@ export function ContentSources() {
 
   if (error) {
     return (
-      <div className="dashboard">
-        <h1>Content sources</h1>
-        <p className="error">{error}</p>
-        <button type="button" onClick={() => { setError(null); load(); }}>Retry</button>
+      <div className="page dashboard">
+        <header className="page-header">
+          <h1 className="page-title">Content sources</h1>
+          <p className="error">{error}</p>
+          <button type="button" className="btn-secondary" onClick={() => { setError(null); load(); }}>Retry</button>
+        </header>
       </div>
     );
   }
 
   return (
-    <div className="dashboard">
-      <header>
-        <h1>Content sources</h1>
-        <p className="section-desc">
+    <div className="page dashboard">
+      <header className="page-header">
+        <h1 className="page-title">Content sources</h1>
+        <p className="page-description">
           Create CMS sources (e.g. Hashnode, Ghost) and map them to domains. When publishing a draft you can choose a source; the mapping is stored for each publication.
         </p>
       </header>
 
       <section className="section">
-        <h2>Sources</h2>
+        <h2 className="section-title">Sources</h2>
         {addForm ? (
           <div className="detail-section" style={{ marginBottom: '1rem' }}>
             <div style={{ marginBottom: '0.75rem' }}>
@@ -249,7 +251,7 @@ export function ContentSources() {
                   placeholder="e.g. My Hashnode blog"
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
-                  className="table-filter"
+                  className="form-input"
                   style={{ maxWidth: '240px', marginLeft: '0.5rem' }}
                 />
               </label>
@@ -261,15 +263,15 @@ export function ContentSources() {
                   setFormType(t);
                   setFormConfig(emptyConfigForType(t));
                 }}
-                className="table-filter"
+                className="form-input"
                 style={{ marginRight: '0.5rem' }}
               >
                 {SOURCE_TYPES.map((t) => (
                   <option key={t} value={t}>{SOURCE_TYPE_LABELS[t] ?? t}</option>
                 ))}
               </select>
-              <button type="button" onClick={handleAdd}>Add</button>
-              <button type="button" onClick={() => { setAddForm(false); setFormName(''); setFormType('hashnode'); setFormConfig(emptyConfigForType('hashnode')); }}>Cancel</button>
+              <button type="button" className="btn-primary" onClick={handleAdd}>Add</button>
+              <button type="button" className="btn-secondary" onClick={() => { setAddForm(false); setFormName(''); setFormType('hashnode'); setFormConfig(emptyConfigForType('hashnode')); }}>Cancel</button>
             </div>
             {(CONFIG_FIELDS[formType] || []).length > 0 && (
               <>
@@ -282,7 +284,7 @@ export function ContentSources() {
                         type={f.inputType}
                         value={formConfig[f.key] ?? ''}
                         onChange={(e) => setFormConfig((prev) => ({ ...prev, [f.key]: e.target.value }))}
-                        className="table-filter"
+                        className="form-input"
                         placeholder={f.inputType === 'password' ? '••••••••' : ''}
                         style={{ flex: 1 }}
                         autoComplete="off"
@@ -295,7 +297,7 @@ export function ContentSources() {
             )}
           </div>
         ) : (
-          <button type="button" onClick={() => setAddForm(true)}>Add content source</button>
+          <button type="button" className="btn-primary" onClick={() => setAddForm(true)}>Add content source</button>
         )}
         {sources.length === 0 ? (
           <p className="table-placeholder">No content sources. Add one to map to domains and use when publishing drafts.</p>
@@ -338,7 +340,7 @@ export function ContentSources() {
                               type="text"
                               value={editForm.name}
                               onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))}
-                              className="table-filter"
+                              className="form-input"
                             />
                             {editErrors.name && <span className="field-error">{editErrors.name}</span>}
                           </div>
@@ -360,7 +362,7 @@ export function ContentSources() {
                                   ...prev,
                                   config: { ...prev.config, [f.key]: e.target.value },
                                 }))}
-                                className="table-filter"
+                                className="form-input"
                                 placeholder={f.inputType === 'password' ? 'Leave blank to keep current' : ''}
                                 autoComplete="off"
                               />
@@ -391,7 +393,7 @@ export function ContentSources() {
                             <select
                               value={selectedDomainId ?? ''}
                               onChange={(e) => setSelectedDomainId(e.target.value ? Number(e.target.value) : null)}
-                              className="table-filter"
+                              className="form-input"
                               style={{ maxWidth: '220px' }}
                             >
                               <option value="">Select domain to add</option>
@@ -407,11 +409,11 @@ export function ContentSources() {
                         </div>
                       </div>
                       <div style={{ marginTop: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                        <button type="button" onClick={() => handleSaveEdit(s.id)}>Save</button>
-                        <button type="button" onClick={handleTestConnection} disabled={validateStatus === 'testing'}>
+                        <button type="button" className="btn-primary btn-sm" onClick={() => handleSaveEdit(s.id)}>Save</button>
+                        <button type="button" className="btn-secondary btn-sm" onClick={handleTestConnection} disabled={validateStatus === 'testing'}>
                           {validateStatus === 'testing' ? 'Testing…' : 'Test connection'}
                         </button>
-                        <button type="button" className="link-btn" onClick={cancelEdit}>Cancel</button>
+                        <button type="button" className="link-btn btn-ghost btn-sm" onClick={cancelEdit}>Cancel</button>
                         {validateStatus && validateStatus !== 'testing' && (
                           <span style={{ color: validateStatus.ok ? 'var(--color-success, #0a0)' : 'var(--color-error, #c00)', fontSize: '0.9em' }}>
                             {validateStatus.message}

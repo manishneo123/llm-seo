@@ -10,7 +10,7 @@ load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 from src.db.connection import get_connection, init_db
 from src.distribution.adapters import distribute
-from src.distribution.learning_loop import generate_weekly_summary
+from src.distribution.learning_loop import generate_weekly_summary, compute_uplift_for_published_drafts
 
 
 def run_distribute(limit: int = 5, base_url: str = "", channels: list[str] | None = None):
@@ -18,16 +18,21 @@ def run_distribute(limit: int = 5, base_url: str = "", channels: list[str] | Non
     base_url = base_url or os.environ.get("SITE_BASE_URL", "https://example.com")
     conn = get_connection()
     init_db(conn)
-    rows = conn.execute(
-        "SELECT id, title, slug, body_md FROM drafts WHERE status IN ('approved','published') ORDER BY updated_at DESC LIMIT ?",
-        (limit,),
-    ).fetchall()
-    for r in rows:
-        url = f"{base_url.rstrip('/')}/{r['slug']}" if r["slug"] else base_url
-        summary = (r["body_md"] or "")[:300].replace("\n", " ")
-        results = distribute(r["title"], url, summary, channels=channels or ["devto"])
-        print(r["title"][:50], "->", results)
-    conn.close()
+    try:
+        rows = conn.execute(
+            "SELECT id, title, slug, body_md FROM drafts WHERE status IN ('approved','published') ORDER BY updated_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        for r in rows:
+            url = f"{base_url.rstrip('/')}/{r['slug']}" if r["slug"] else base_url
+            summary = (r["body_md"] or "")[:300].replace("\n", " ")
+            results = distribute(r["title"], url, summary, channels=channels or ["devto"])
+            print(r["title"][:50], "->", results)
+        n = compute_uplift_for_published_drafts(conn=conn)
+        if n:
+            print(f"Uplift: computed {n} new citation/brand uplift row(s) for published drafts.")
+    finally:
+        conn.close()
 
 
 def run_weekly_report():

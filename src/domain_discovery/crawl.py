@@ -37,6 +37,34 @@ def _normalize_domain(domain: str) -> str:
     return d.rstrip("/")
 
 
+def check_domain_reachable(domain: str) -> tuple[bool, str]:
+    """
+    Verify that the domain exists and is reachable (e.g. responds to HTTP).
+    Returns (True, "") if reachable, (False, "error message") if not.
+    Tries HTTPS first, then HTTP. Any response (2xx, 3xx, 4xx, 5xx) counts as reachable.
+    """
+    base = _normalize_domain(domain)
+    if not base.startswith("https://"):
+        base = "https://" + base
+    urls_to_try = [base]
+    if base.startswith("https://"):
+        urls_to_try.append("http://" + base.replace("https://", "", 1))
+    last_error = "Domain does not exist or is not reachable. Please check the URL and try again."
+    for url in urls_to_try:
+        try:
+            with httpx.Client(follow_redirects=True, timeout=REQUEST_TIMEOUT) as client:
+                client.get(url)
+                return True, ""
+        except httpx.ConnectError:
+            # DNS failure, connection refused, etc. — use a friendly message
+            last_error = "Domain does not exist or could not be found. Please check the URL and try again."
+        except httpx.TimeoutException:
+            last_error = "Domain did not respond in time. Please try again later."
+        except httpx.RequestError:
+            last_error = "Could not reach the website. Please check the URL and try again."
+    return False, last_error
+
+
 def fetch_page(url: str) -> str:
     """Fetch URL and return plain text; empty string on failure."""
     try:

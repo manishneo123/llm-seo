@@ -84,13 +84,16 @@ Produce a content brief for a new article that could win this citation. Output v
 
 
 def store_brief_in_db(prompt_id: int, brief: dict, conn) -> int:
-    """Insert into content_briefs; return brief id. image_prompts stored as JSON array."""
+    """Insert into content_briefs; return brief id. image_prompts stored as JSON array. user_id from prompt."""
+    row = conn.execute("SELECT user_id FROM prompts WHERE id = ?", (prompt_id,)).fetchone()
+    user_id = row["user_id"] if row and row["user_id"] is not None else 1
     image_prompts = brief.get("image_prompts") or []
     image_prompts_json = json.dumps(image_prompts) if image_prompts else None
     cur = conn.execute(
-        """INSERT INTO content_briefs (prompt_id, topic, angle, priority_score, suggested_headings, entities_to_mention, schema_to_add, image_prompts, status)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')""",
+        """INSERT INTO content_briefs (user_id, prompt_id, topic, angle, priority_score, suggested_headings, entities_to_mention, schema_to_add, image_prompts, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')""",
         (
+            user_id,
             prompt_id,
             brief.get("topic", ""),
             brief.get("angle", ""),

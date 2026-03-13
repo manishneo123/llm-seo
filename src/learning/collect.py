@@ -14,12 +14,13 @@ def collect_uplift_and_briefs() -> list[dict]:
         init_db(conn)
         rows = conn.execute("""
             SELECT u.id, u.draft_id, u.citation_rate_before, u.citation_rate_after,
+                   u.brand_rate_before, u.brand_rate_after,
                    d.title AS draft_title, d.brief_id, d.status AS draft_status,
                    b.topic, b.angle, b.suggested_headings, b.schema_to_add, b.priority_score
             FROM citation_uplift u
             JOIN drafts d ON d.id = u.draft_id
             LEFT JOIN content_briefs b ON b.id = d.brief_id
-            ORDER BY u.citation_rate_after - u.citation_rate_before DESC
+            ORDER BY (u.citation_rate_after - u.citation_rate_before) + (COALESCE(u.brand_rate_after, 0) - COALESCE(u.brand_rate_before, 0)) DESC
             LIMIT 20
         """).fetchall()
         return [dict(r) for r in rows]
@@ -74,11 +75,17 @@ def collect_all_for_hints() -> dict:
     cited = collect_cited_prompts_by_niche(50)
     runs = collect_recent_run_summary()
     # Build a short text summary for the LLM
-    lines = ["=== Citation uplift (drafts that improved citation rate) ==="]
+    lines = ["=== Citation and brand uplift (drafts that improved citation or brand mention rate) ==="]
     if uplift:
         for u in uplift[:10]:
-            delta = (u.get("citation_rate_after") or 0) - (u.get("citation_rate_before") or 0)
-            lines.append(f"  Draft: {u.get('draft_title', '')[:50]}; topic={u.get('topic', '')[:40]}; schema={u.get('schema_to_add')}; delta={delta:.1f}%")
+            cite_delta = (u.get("citation_rate_after") or 0) - (u.get("citation_rate_before") or 0)
+            brand_before = u.get("brand_rate_before")
+            brand_after = u.get("brand_rate_after")
+            brand_delta = (brand_after - brand_before) if (brand_before is not None and brand_after is not None) else None
+            brand_str = f"; brand_delta={brand_delta:+.1f}%" if brand_delta is not None else ""
+            lines.append(
+                f"  Draft: {u.get('draft_title', '')[:50]}; topic={u.get('topic', '')[:40]}; schema={u.get('schema_to_add')}; citation_delta={cite_delta:.1f}%{brand_str}"
+            )
     else:
         lines.append("  (none yet)")
 

@@ -1,6 +1,54 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getMonitoringExecution, type MonitoringExecutionDetail } from '../api/client';
+const API_BASE = import.meta.env.VITE_API_URL || '';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/Card';
+
+function StatusBadge({ status }: { status: string }) {
+  const variant = status === 'finished' ? 'success' : status === 'failed' ? 'error' : status === 'running' ? 'running' : 'default';
+  return <span className={`monitoring-status-badge monitoring-status-badge--${variant}`}>{status}</span>;
+}
+
+type VisibilityValue = {
+  had_own_citation: boolean;
+  brand_mentioned: boolean;
+  competitor_only: boolean;
+};
+
+function getVisibilityStatus(v?: VisibilityValue): 'cited' | 'brand' | 'competitor' | 'none' {
+  if (!v) return 'none';
+  if (v.had_own_citation) return 'cited';
+  if (v.brand_mentioned) return 'brand';
+  if (v.competitor_only) return 'competitor';
+  return 'none';
+}
+
+function VisibilityDot({ value }: { value?: VisibilityValue }) {
+  const status = getVisibilityStatus(value);
+  const label =
+    status === 'cited'
+      ? 'Cited'
+      : status === 'brand'
+        ? 'Brand mentioned'
+        : status === 'competitor'
+          ? 'Competitor only'
+          : 'Not present';
+  return <span className={`visibility-dot visibility-dot--${status}`} aria-label={label} title={label} />;
+}
+
+function normalizeModelKey(model: string): string {
+  return model.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+}
+
+function ModelLabel({ model }: { model: string }) {
+  const key = normalizeModelKey(model);
+  return (
+    <span className={`visibility-model-label visibility-model--${key}`}>
+      <span className="visibility-model-label-dot" />
+      {model}
+    </span>
+  );
+}
 
 export function MonitoringExecutionDetail() {
   const { id } = useParams<{ id: string }>();
@@ -17,139 +65,179 @@ export function MonitoringExecutionDetail() {
 
   if (error) {
     return (
-      <div className="dashboard">
-        <h1>Execution</h1>
-        <p className="error">{error}</p>
-        <button type="button" onClick={() => navigate('/monitoring')}>← Back to Monitoring</button>
+      <div className="page dashboard execution-detail-page">
+        <header className="page-header">
+          <button type="button" className="execution-detail-back" onClick={() => navigate('/monitoring')}>← Monitoring</button>
+          <h1 className="page-title">Execution</h1>
+          <p className="error">{error}</p>
+          <button type="button" className="btn-secondary" onClick={() => { setError(null); if (id) getMonitoringExecution(Number(id)).then(setExecution).catch((e) => setError(e instanceof Error ? e.message : 'Failed to load')); }}>Retry</button>
+        </header>
       </div>
     );
   }
 
   if (!execution) {
     return (
-      <div className="dashboard">
-        <p>Loading…</p>
+      <div className="page dashboard execution-detail-page">
+        <header className="page-header">
+          <button type="button" className="execution-detail-back" onClick={() => navigate('/monitoring')}>← Monitoring</button>
+          <p className="page-description">Loading execution…</p>
+        </header>
       </div>
     );
   }
 
   return (
-    <div className="dashboard">
-      <header>
-        <button type="button" className="link-btn" onClick={() => navigate('/monitoring')}>← Back to Monitoring</button>
-        <h1>Execution #{execution.id}</h1>
-        <p>Trigger: {execution.trigger_type} · Status: {execution.status}</p>
-        <p className="section-desc">Started: {execution.started_at} · Finished: {execution.finished_at ?? '—'}</p>
+    <div className="page dashboard execution-detail-page">
+      <header className="page-header">
+        <button type="button" className="execution-detail-back" onClick={() => navigate('/monitoring')}>← Monitoring</button>
+        <h1 className="page-title">Execution #{execution.id}</h1>
+        <p className="page-description">Trigger: {execution.trigger_type} · Started {execution.started_at}{execution.finished_at ? ` · Finished ${execution.finished_at}` : ''}</p>
+        <div className="execution-detail-meta">
+          <StatusBadge status={execution.status} />
+          {execution.status === 'finished' && (
+            <button
+              type="button"
+              className="btn-secondary btn-sm"
+              onClick={() => window.open(`${API_BASE}/api/reports/executions/${execution.id}.pdf`, '_blank')}
+            >
+              Download PDF report
+            </button>
+          )}
+        </div>
       </header>
 
-      <section className="section detail-section">
-        <h2>Runs (by model)</h2>
-        {execution.runs.length === 0 ? (
-          <p className="table-placeholder">No runs for this execution (e.g. execution created before grouping).</p>
-        ) : (
-          <table className="prompts-table">
-            <thead>
-              <tr>
-                <th>Run ID</th>
-                <th>Model</th>
-                <th>Started</th>
-                <th>Finished</th>
-                <th>Prompts</th>
-                <th>Status</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {execution.runs.map((r) => (
-                <tr key={r.id}>
-                  <td>{r.id}</td>
-                  <td>{r.model}</td>
-                  <td>{r.started_at}</td>
-                  <td>{r.finished_at ?? '—'}</td>
-                  <td>{r.prompt_count}</td>
-                  <td>{r.status}</td>
-                  <td>
-                    <button type="button" className="link-btn" onClick={() => navigate(`/prompts`)}>
-                      View prompts
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
+      <Card className="execution-detail-card">
+        <CardHeader>
+          <CardTitle>Runs by model</CardTitle>
+          <CardDescription>Each run corresponds to one model. Prompts and visibility are listed below.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {execution.runs.length === 0 ? (
+            <div className="execution-detail-empty">No runs for this execution (e.g. created before grouping).</div>
+          ) : (
+            <div className="monitoring-table-wrap">
+              <table className="prompts-table monitoring-table">
+                <thead>
+                  <tr>
+                    <th>Run</th>
+                    <th>Model</th>
+                    <th>Started</th>
+                    <th>Finished</th>
+                    <th>Prompts</th>
+                    <th>Status</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {execution.runs.map((r) => (
+                    <tr key={r.id}>
+                      <td><span className="monitoring-id">#{r.id}</span></td>
+                      <td><ModelLabel model={r.model} /></td>
+                      <td>{r.started_at}</td>
+                      <td>{r.finished_at ?? '—'}</td>
+                      <td>{r.prompt_count}</td>
+                      <td><StatusBadge status={r.status} /></td>
+                      <td>
+                        <button type="button" className="link-btn" onClick={() => navigate('/prompts')}>View prompts →</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {execution.prompt_visibility && execution.prompt_visibility.length > 0 && (
-        <section className="section detail-section">
-          <h2>Prompt visibility for this execution</h2>
-          <p className="section-desc">For each prompt, visibility (cited / brand mentioned / competitor-only) per model in this run.</p>
-          <div className="prompts-table-wrap">
-            <table className="prompts-table execution-visibility-table">
-              <colgroup>
-                <col className="col-prompt" style={{ width: '280px' }} />
-                <col className="col-niche" style={{ width: '140px' }} />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th className="col-prompt">Prompt</th>
-                  <th className="col-niche">Niche</th>
-                  {execution.runs.map((r) => (
-                    <th key={r.id} colSpan={3} style={{ textAlign: 'center' }}>
-                      {r.model}
-                    </th>
-                  ))}
-                </tr>
-                <tr>
-                  <th className="col-prompt"></th>
-                  <th className="col-niche"></th>
-                  {execution.runs.flatMap((r) => [
-                    <th key={`${r.id}-cite`} style={{ fontWeight: 500, fontSize: '0.8rem' }}>Cited</th>,
-                    <th key={`${r.id}-brand`} style={{ fontWeight: 500, fontSize: '0.8rem' }}>Brand</th>,
-                    <th key={`${r.id}-comp`} style={{ fontWeight: 500, fontSize: '0.8rem' }}>Comp-only</th>,
-                  ])}
-                </tr>
-              </thead>
-              <tbody>
-                {execution.prompt_visibility.map((pv) => {
-                  const byModel = Object.fromEntries(pv.visibility_by_run.map((v) => [v.model, v]));
-                  return (
-                    <tr key={pv.prompt_id}>
-                      <td className="col-prompt execution-visibility-prompt-cell">
-                        <button
-                          type="button"
-                          className="link-btn"
-                          onClick={() => navigate(`/prompts/${pv.prompt_id}`)}
-                          title={pv.text}
-                        >
-                          {pv.text.slice(0, 56)}{pv.text.length > 56 ? '…' : ''}
-                        </button>
-                      </td>
-                      <td className="col-niche execution-visibility-niche-cell">{pv.niche ? pv.niche.slice(0, 24) + (pv.niche.length > 24 ? '…' : '') : '—'}</td>
-                      {execution.runs.flatMap((r) => {
-                        const v = byModel[r.model];
-                        return [
-                          <td key={`${r.id}-cite`} style={{ textAlign: 'center' }}>{v?.had_own_citation ? '✓' : '—'}</td>,
-                          <td key={`${r.id}-brand`} style={{ textAlign: 'center' }}>{v?.brand_mentioned ? '✓' : '—'}</td>,
-                          <td key={`${r.id}-comp`} style={{ textAlign: 'center' }}>{v?.competitor_only ? '✓' : '—'}</td>,
-                        ];
-                      })}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </section>
+        <Card className="execution-detail-card">
+          <CardHeader>
+            <CardTitle>Prompt visibility</CardTitle>
+            <CardDescription>Per-prompt citation and brand mention status across all models for this execution.</CardDescription>
+          </CardHeader>
+          <CardContent className="execution-visibility-content">
+            <div className="visibility-legend">
+              <span className="visibility-legend-item">
+                <span className="visibility-dot visibility-dot--cited" />
+                Cited
+              </span>
+              <span className="visibility-legend-item">
+                <span className="visibility-dot visibility-dot--brand" />
+                Brand mentioned
+              </span>
+              <span className="visibility-legend-item">
+                <span className="visibility-dot visibility-dot--competitor" />
+                Competitor only
+              </span>
+              <span className="visibility-legend-item">
+                <span className="visibility-dot visibility-dot--none" />
+                Not present
+              </span>
+            </div>
+            <div className="prompts-table-wrap execution-visibility-wrap">
+              <table className="prompts-table execution-visibility-table">
+                <colgroup>
+                  <col className="col-prompt" style={{ width: '280px' }} />
+                  <col className="col-niche" style={{ width: '140px' }} />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th className="col-prompt">Prompt</th>
+                    <th className="col-niche">Niche</th>
+                    {execution.runs.map((r) => (
+                      <th key={r.id} className="execution-visibility-model-header">
+                        <ModelLabel model={r.model} />
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {execution.prompt_visibility.map((pv) => {
+                    const byModel = Object.fromEntries(pv.visibility_by_run.map((v) => [v.model, v]));
+                    return (
+                      <tr key={pv.prompt_id}>
+                        <td className="col-prompt execution-visibility-prompt-cell">
+                          <button
+                            type="button"
+                            className="link-btn"
+                            onClick={() => navigate(`/prompts/${pv.prompt_id}`)}
+                            title={pv.text}
+                          >
+                            {pv.text.slice(0, 56)}{pv.text.length > 56 ? '…' : ''}
+                          </button>
+                        </td>
+                        <td className="col-niche execution-visibility-niche-cell">{pv.niche ? pv.niche.slice(0, 24) + (pv.niche.length > 24 ? '…' : '') : '—'}</td>
+                        {execution.runs.map((r) => {
+                          const v = byModel[r.model] as VisibilityValue | undefined;
+                          return (
+                            <td key={r.id} className="execution-visibility-cell">
+                              <VisibilityDot value={v} />
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {execution.settings_snapshot && Object.keys(execution.settings_snapshot).length > 0 && (
-        <section className="section detail-section">
-          <h2>Settings used</h2>
-          <pre className="response-text-pre" style={{ maxHeight: '12rem' }}>
-            {JSON.stringify(execution.settings_snapshot, null, 2)}
-          </pre>
-        </section>
+        <Card className="execution-detail-card">
+          <CardHeader>
+            <CardTitle>Settings used</CardTitle>
+            <CardDescription>Configuration snapshot for this run.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <pre className="execution-settings-pre">
+              {JSON.stringify(execution.settings_snapshot, null, 2)}
+            </pre>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

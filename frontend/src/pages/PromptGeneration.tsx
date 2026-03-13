@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   getPromptGenerationSettings,
   updatePromptGenerationSettings,
@@ -11,6 +12,7 @@ import {
 const RUNS_PAGE_SIZE = 15;
 
 export function PromptGeneration() {
+  const navigate = useNavigate();
   const [settings, setSettings] = useState<PromptGenerationSettings | null>(null);
   const [runs, setRuns] = useState<PromptGenerationRun[]>([]);
   const [runsTotal, setRunsTotal] = useState(0);
@@ -83,30 +85,32 @@ export function PromptGeneration() {
 
   if (error && !settings) {
     return (
-      <div className="dashboard">
-        <h1>Prompt generation</h1>
-        <p className="error">{error}</p>
-        <button type="button" onClick={() => { setError(null); loadSettings(); }}>Retry</button>
+      <div className="page dashboard">
+        <header className="page-header">
+          <h1 className="page-title">Prompt generation</h1>
+          <p className="error">{error}</p>
+          <button type="button" className="btn-secondary" onClick={() => { setError(null); loadSettings(); }}>Retry</button>
+        </header>
       </div>
     );
   }
 
   return (
-    <div className="dashboard">
-      <header>
-        <h1>Prompt generation</h1>
-        <p>Schedule automatic prompt generation from domain profiles and view run history.</p>
+    <div className="page dashboard">
+      <header className="page-header">
+        <h1 className="page-title">Prompt generation</h1>
+        <p className="page-description">Schedule automatic prompt generation from domain profiles and view run history.</p>
       </header>
 
       <section className="section detail-section">
-        <h2>Schedule</h2>
+        <h2 className="section-title">Schedule</h2>
         <p className="section-desc">Generate new prompts from domain profiles on a schedule. Runs only after domain discovery. Scheduler checks every minute.</p>
         <div className="profile-edit-form" style={{ maxWidth: '560px' }}>
-          <label className="profile-edit-label" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
             Enable scheduled prompt generation
           </label>
-          <label className="profile-edit-label">Frequency (days)</label>
+          <label className="form-label">Frequency (days)</label>
           <input
             type="number"
             min={0.5}
@@ -114,16 +118,16 @@ export function PromptGeneration() {
             value={frequencyDays}
             onChange={(e) => setFrequencyDays(e.target.value === '' ? '' : parseFloat(e.target.value) || '')}
             placeholder="e.g. 7"
-            className="table-filter"
+            className="form-input"
             style={{ width: '100px', marginBottom: '0.75rem' }}
           />
-          <label className="profile-edit-label">Prompts per domain (empty = use config default)</label>
+          <label className="form-label">Prompts per domain (empty = use config default)</label>
           <input
             type="number"
             min={1}
             value={promptsPerDomain}
             onChange={(e) => setPromptsPerDomain(e.target.value === '' ? '' : parseInt(e.target.value, 10) || '')}
-            className="table-filter"
+            className="form-input"
             style={{ width: '100px', marginBottom: '0.75rem' }}
           />
           {settings?.last_run_at && (
@@ -132,18 +136,20 @@ export function PromptGeneration() {
             </p>
           )}
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <button type="button" onClick={handleSave} disabled={saving}>
+            <button type="button" className="btn-primary" onClick={handleSave} disabled={saving}>
               {saving ? 'Saving…' : 'Save settings'}
             </button>
-            <button type="button" onClick={handleRunNow} disabled={running}>
+            <button type="button" className="btn-secondary" onClick={handleRunNow} disabled={running}>
               {running ? 'Running…' : 'Run prompt generation now'}
             </button>
           </div>
         </div>
       </section>
 
+      <hr className="section-divider" />
+
       <section className="section">
-        <h2>Prompt generation runs</h2>
+        <h2 className="section-title">Prompt generation runs</h2>
         <p className="section-desc">History of scheduled and manual prompt generation runs.</p>
         {runsTotal > 0 && (
           <div className="pagination-bar">
@@ -170,6 +176,7 @@ export function PromptGeneration() {
                 <th>Trigger</th>
                 <th>Status</th>
                 <th>Inserted</th>
+                <th>Details</th>
               </tr>
             </thead>
             <tbody>
@@ -181,6 +188,15 @@ export function PromptGeneration() {
                   <td>{run.trigger_type}</td>
                   <td>{run.status}</td>
                   <td>{run.inserted_count ?? '—'}</td>
+                  <td>
+                    <button
+                      type="button"
+                      className="link-btn"
+                      onClick={() => navigate(`/prompts?prompt_generation_run_id=${run.id}`)}
+                    >
+                      View prompts
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>

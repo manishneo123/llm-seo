@@ -6,11 +6,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-PROFILE_PROMPT = """Analyze the following website content and extract a structured profile for LLM SEO (generating search prompts that could lead to citing this site).
+PROFILE_PROMPT = """Analyze the following website content and extract a structured profile for TRUSEO (generating search prompts that could lead to citing this site).
 
 Output valid JSON only, with these exact keys:
 - "domain": the domain name (e.g. example.com)
-- "category": broad category (e.g. "Blockchain compliance", "AI dev tools")
+- "category": the single best broad category (e.g. "Blockchain compliance", "AI dev tools")
+- "categories": array of exactly 3 possible broad categories, ordered by relevance (first is best fit). Use short, consistent labels (e.g. "SaaS", "Developer tools", "API platform")
 - "niche": short niche label (e.g. "Crypto KYC", "ML ops")
 - "value_proposition": 1-2 sentences describing what the product/service offers
 - "key_topics": array of 5-10 key topics or product areas (strings)
@@ -51,6 +52,7 @@ def extract_profile_with_openai(domain: str, crawled_text: str, api_key: str | N
         data = _extract_json(raw)
         data["domain"] = domain
         data["competitors"] = list(data.get("competitors") or [])
+        data["categories"] = _normalize_categories(data.get("categories"), data.get("category"))
         return data
     except json.JSONDecodeError:
         return _default_profile(domain)
@@ -73,9 +75,24 @@ def extract_profile_with_anthropic(domain: str, crawled_text: str, api_key: str 
         data = _extract_json(raw)
         data["domain"] = domain
         data["competitors"] = list(data.get("competitors") or [])
+        data["categories"] = _normalize_categories(data.get("categories"), data.get("category"))
         return data
     except json.JSONDecodeError:
         return _default_profile(domain)
+
+
+def _normalize_categories(categories: list | None, primary_category: str | None = None) -> list[str]:
+    """Ensure we have exactly 3 category strings; use primary_category if provided to fill or lead."""
+    out = []
+    if primary_category and (primary_category or "").strip():
+        out.append((primary_category or "").strip())
+    for c in (categories or [])[:3]:
+        s = (c or "").strip() if isinstance(c, str) else str(c).strip()
+        if s and s not in out:
+            out.append(s)
+    while len(out) < 3:
+        out.append("General")
+    return out[:3]
 
 
 def extract_profile(domain: str, crawled_text: str) -> dict:
@@ -91,6 +108,7 @@ def _default_profile(domain: str) -> dict:
     return {
         "domain": domain,
         "category": "Unknown",
+        "categories": ["Unknown", "General", "Other"],
         "niche": "General",
         "value_proposition": "",
         "key_topics": [],

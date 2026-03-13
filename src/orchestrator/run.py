@@ -1,4 +1,4 @@
-"""Orchestrator: rule-based autonomous run of the LLM SEO pipeline."""
+"""Orchestrator: rule-based autonomous run of the TRUSEO pipeline."""
 import os
 import sys
 from datetime import datetime, timezone
@@ -172,7 +172,7 @@ def run_once(dry_run: bool = False):
 
 if __name__ == "__main__":
     import argparse
-    p = argparse.ArgumentParser(description="Run LLM SEO pipeline autonomously (rule-based).")
+    p = argparse.ArgumentParser(description="Run TRUSEO pipeline autonomously (rule-based).")
     p.add_argument("--dry-run", action="store_true", help="Only print which steps would run.")
     args = p.parse_args()
     run_once(dry_run=args.dry_run)

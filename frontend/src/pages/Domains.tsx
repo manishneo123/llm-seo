@@ -61,7 +61,7 @@ export function Domains() {
     setDiscoveryRunning(true);
     setError(null);
     runDiscovery()
-      .then((r) => {
+      .then(() => {
         setDiscoveryRunning(false);
         load();
       })
@@ -181,23 +181,25 @@ export function Domains() {
 
   if (error) {
     return (
-      <div className="dashboard">
-        <h1>Domains</h1>
-        <p className="error">{error}</p>
-        <button type="button" onClick={() => { setError(null); load(); }}>Retry</button>
+      <div className="page dashboard">
+        <header className="page-header">
+          <h1 className="page-title">Domains</h1>
+          <p className="error">{error}</p>
+          <button type="button" className="btn-secondary" onClick={() => { setError(null); load(); }}>Retry</button>
+        </header>
       </div>
     );
   }
 
   return (
-    <div className="dashboard">
-      <header>
-        <h1>Domains</h1>
-        <p>Add domains to track (your brand/sites). Run discovery to extract profiles and competitors; then you can generate prompts.</p>
+    <div className="page dashboard">
+      <header className="page-header">
+        <h1 className="page-title">Domains</h1>
+        <p className="page-description">Add domains to track (your brand/sites). Run discovery to extract profiles and competitors; then you can generate prompts.</p>
       </header>
 
       <section className="section">
-        <h2>Discovery</h2>
+        <h2 className="section-title">Discovery</h2>
         {status && (
           <p className="section-desc">
             Domains: {status.domains_count} · Profiles: {status.profiles_count}
@@ -215,8 +217,10 @@ export function Domains() {
         </div>
       </section>
 
+      <hr className="section-divider" />
+
       <section className="section">
-        <h2>Tracked domains</h2>
+        <h2 className="section-title">Tracked domains</h2>
         {addForm ? (
           <div className="detail-section">
             <input
@@ -224,7 +228,7 @@ export function Domains() {
               placeholder="Domain (e.g. www.example.com)"
               value={formDomain}
               onChange={(e) => setFormDomain(e.target.value)}
-              className="table-filter"
+              className="form-input"
               style={{ maxWidth: '320px', marginRight: '0.5rem' }}
             />
             <input
@@ -232,14 +236,14 @@ export function Domains() {
               placeholder="Brand names (comma-separated)"
               value={formBrandNames}
               onChange={(e) => setFormBrandNames(e.target.value)}
-              className="table-filter"
+              className="form-input"
               style={{ maxWidth: '280px', marginRight: '0.5rem' }}
             />
-            <button type="button" onClick={handleAdd} disabled={!formDomain.trim()}>Add</button>
-            <button type="button" onClick={() => { setAddForm(false); setFormDomain(''); setFormBrandNames(''); }}>Cancel</button>
+            <button type="button" className="btn-primary" onClick={handleAdd} disabled={!formDomain.trim()}>Add</button>
+            <button type="button" className="btn-secondary" onClick={() => { setAddForm(false); setFormDomain(''); setFormBrandNames(''); }}>Cancel</button>
           </div>
         ) : (
-          <button type="button" onClick={() => setAddForm(true)}>Add domain</button>
+          <button type="button" className="btn-primary" onClick={() => setAddForm(true)}>Add domain</button>
         )}
         {domains.length === 0 ? (
           <p className="table-placeholder">No domains. Add one or more domains to run discovery.</p>
@@ -263,7 +267,7 @@ export function Domains() {
                           type="text"
                           value={formDomain}
                           onChange={(e) => setFormDomain(e.target.value)}
-                          className="table-filter"
+                          className="form-input"
                           style={{ width: '100%', maxWidth: '200px' }}
                         />
                       </td>
@@ -272,15 +276,15 @@ export function Domains() {
                           type="text"
                           value={formBrandNames}
                           onChange={(e) => setFormBrandNames(e.target.value)}
-                          className="table-filter"
+                          className="form-input"
                           style={{ width: '100%', maxWidth: '220px' }}
                           placeholder="Comma-separated"
                         />
                       </td>
                       <td>—</td>
                       <td>
-                        <button type="button" onClick={() => handleSaveEdit(d.id)}>Save</button>
-                        <button type="button" onClick={() => { setEditingId(null); setFormDomain(''); setFormBrandNames(''); }}>Cancel</button>
+                        <button type="button" className="btn-primary btn-sm" onClick={() => handleSaveEdit(d.id)}>Save</button>
+                        <button type="button" className="btn-secondary btn-sm" onClick={() => { setEditingId(null); setFormDomain(''); setFormBrandNames(''); }}>Cancel</button>
                       </td>
                     </>
                   ) : (
@@ -339,7 +343,7 @@ export function Domains() {
         const isEditing = editingProfileId === domainId;
         return (
           <section key={pid} className="section detail-section">
-            <h2>
+            <h2 className="subsection-title">
               Profile: {p.domain}
               {!isEditing && (
                 <button
@@ -355,55 +359,55 @@ export function Domains() {
             {profileSaveError && isEditing && <p className="error">{profileSaveError}</p>}
             {isEditing ? (
               <div className="profile-edit-form">
-                <label className="profile-edit-label">Category</label>
+                <label className="form-label">Category</label>
                 <input
                   type="text"
                   value={profileForm.category}
                   onChange={(e) => setProfileForm((f) => ({ ...f, category: e.target.value }))}
-                  className="table-filter"
+                  className="form-input"
                   style={{ marginBottom: '0.75rem', maxWidth: '100%' }}
                 />
-                <label className="profile-edit-label">Niche</label>
+                <label className="form-label">Niche</label>
                 <input
                   type="text"
                   value={profileForm.niche}
                   onChange={(e) => setProfileForm((f) => ({ ...f, niche: e.target.value }))}
-                  className="table-filter"
+                  className="form-input"
                   style={{ marginBottom: '0.75rem', maxWidth: '100%' }}
                 />
-                <label className="profile-edit-label">Value proposition</label>
+                <label className="form-label">Value proposition</label>
                 <textarea
                   value={profileForm.value_proposition}
                   onChange={(e) => setProfileForm((f) => ({ ...f, value_proposition: e.target.value }))}
-                  className="table-filter"
+                  className="form-input"
                   rows={3}
                   style={{ marginBottom: '0.75rem', width: '100%', resize: 'vertical' }}
                 />
-                <label className="profile-edit-label">Target audience</label>
+                <label className="form-label">Target audience</label>
                 <textarea
                   value={profileForm.target_audience}
                   onChange={(e) => setProfileForm((f) => ({ ...f, target_audience: e.target.value }))}
-                  className="table-filter"
+                  className="form-input"
                   rows={2}
                   style={{ marginBottom: '0.75rem', width: '100%', resize: 'vertical' }}
                 />
-                <label className="profile-edit-label">Key topics (one per line)</label>
+                <label className="form-label">Key topics (one per line)</label>
                 <textarea
                   value={profileForm.key_topics.join('\n')}
                   onChange={(e) => setProfileForm((f) => ({ ...f, key_topics: e.target.value.split('\n').map((s) => s.trim()).filter(Boolean) }))}
-                  className="table-filter"
+                  className="form-input"
                   rows={4}
                   placeholder="One topic per line"
                   style={{ marginBottom: '0.75rem', width: '100%', resize: 'vertical' }}
                 />
-                <label className="profile-edit-label">Competitors (add or remove)</label>
+                <label className="form-label">Competitors (add or remove)</label>
                 <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
                   <input
                     type="text"
                     value={newCompetitor}
                     onChange={(e) => setNewCompetitor(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addCompetitor())}
-                    className="table-filter"
+                    className="form-input"
                     placeholder="Add competitor name"
                     style={{ flex: '1', minWidth: '140px' }}
                   />
@@ -419,8 +423,8 @@ export function Domains() {
                 </ul>
                 {profileForm.competitors.length === 0 && <p className="section-desc">No competitors. Add some above.</p>}
                 <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem' }}>
-                  <button type="button" onClick={() => handleSaveProfile(domainId)}>Save profile</button>
-                  <button type="button" onClick={cancelEditProfile}>Cancel</button>
+                  <button type="button" className="btn-primary" onClick={() => handleSaveProfile(domainId)}>Save profile</button>
+                  <button type="button" className="btn-secondary" onClick={cancelEditProfile}>Cancel</button>
                 </div>
               </div>
             ) : (

@@ -9,14 +9,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
-_HINTS_PROMPT = """You are analyzing outcomes from an LLM-SEO pipeline: we monitor which prompts get our domain cited, create content briefs, publish drafts, and measure citation uplift.
+_HINTS_PROMPT = """You are analyzing outcomes from an LLM-SEO pipeline: we monitor which prompts get our domain cited and our brand name mentioned, create content briefs, publish drafts, and measure citation uplift and brand-mention uplift (when published content led to more citations or brand mentions).
 
 Data summary:
 {summary}
 
 Produce exactly one JSON object with these keys (all strings except channel_weights):
-- "prompt_gen_hints": 2-4 sentences telling the prompt generator what topics or question styles led to more citations. If data is sparse, give generic best-practice hints.
-- "brief_gen_system_extra": 2-4 sentences to add to the brief generator so it prefers structure/schema/angles that led to uplift. If no uplift data, give generic advice.
+- "prompt_gen_hints": 2-4 sentences telling the prompt generator what topics or question styles led to more citations and/or brand mentions. Consider both citation_delta and brand_delta when present. If data is sparse, give generic best-practice hints.
+- "brief_gen_system_extra": 2-4 sentences to add to the brief generator so it prefers structure/schema/angles that led to citation or brand uplift. Prefer prompt styles and brief structures that coincided with positive brand uplift when that data exists. If no uplift data, give generic advice.
 - "channel_weights": object with keys "devto" and "reddit" and number values (e.g. 0.7 and 0.3) that sum to 1.0, indicating preferred distribution. If unclear, use {"devto": 0.6, "reddit": 0.4}.
 
 Output ONLY valid JSON, no markdown or extra text."""

@@ -2,8 +2,6 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getBrief, type BriefDetail } from '../api/client';
 
-const API_BASE = import.meta.env.VITE_API_URL || '';
-
 function parseJsonArray(s: string | null | undefined): string[] {
   if (!s) return [];
   try {
@@ -51,15 +49,15 @@ export function BriefDetail() {
     URL.revokeObjectURL(url);
   };
 
-  if (error) return <div className="dashboard"><h1>Brief</h1><p className="error">{error}</p><button type="button" onClick={() => navigate('/briefs')}>← Back to briefs</button></div>;
-  if (!brief) return <div className="dashboard"><h1>Brief</h1><p>Loading…</p></div>;
+  if (error) return <div className="page dashboard"><header className="page-header"><h1 className="page-title">Brief</h1><p className="error">{error}</p><button type="button" className="link-btn" onClick={() => navigate('/briefs')}>← Back to briefs</button></header></div>;
+  if (!brief) return <div className="page dashboard"><p className="page-description">Loading…</p></div>;
 
   return (
-    <div className="dashboard">
-      <header>
+    <div className="page dashboard">
+      <header className="page-header">
         <button type="button" className="link-btn" onClick={() => navigate('/briefs')}>← Briefs</button>
-        <h1>{brief.topic}</h1>
-        <p>Priority: {brief.priority_score} · Status: {brief.status} · Created: {brief.created_at}</p>
+        <h1 className="page-title">{brief.topic}</h1>
+        <p className="page-description">Priority: {brief.priority_score} · Status: {brief.status} · Created: {brief.created_at}</p>
         <div className="brief-actions">
           <button type="button" onClick={handleCopyBrief}>
             {copyFeedback ?? 'Copy brief'}
@@ -74,7 +72,7 @@ export function BriefDetail() {
       </header>
 
       <section className="section detail-section">
-        <h2>Image prompts</h2>
+        <h2 className="section-title">Image prompts</h2>
         {(() => {
           const prompts = parseJsonArray(brief.image_prompts);
           return (
@@ -97,7 +95,7 @@ export function BriefDetail() {
       </section>
 
       <section className="section detail-section">
-        <h2>Details</h2>
+        <h2 className="section-title">Details</h2>
         <dl className="detail-dl">
           <dt>Angle</dt><dd>{brief.angle || '—'}</dd>
           <dt>Suggested headings</dt><dd>{brief.suggested_headings || '—'}</dd>
@@ -108,7 +106,7 @@ export function BriefDetail() {
 
       {brief.prompt && (
         <section className="section detail-section">
-          <h2>Source prompt</h2>
+          <h2 className="section-title">Source prompt</h2>
           <p className="prompt-text">{brief.prompt.text}</p>
           {brief.prompt.niche && <p><strong>Niche:</strong> {brief.prompt.niche}</p>}
           <button type="button" className="link-btn" onClick={() => navigate(`/prompts/${brief.prompt!.id}`)}>View prompt detail →</button>
@@ -117,7 +115,7 @@ export function BriefDetail() {
 
       {brief.draft && (
         <section className="section detail-section">
-          <h2>Draft</h2>
+          <h2 className="section-title">Draft</h2>
           <p>{brief.draft.title} · Status: {brief.draft.status}</p>
           <button type="button" className="link-btn" onClick={() => navigate(`/drafts/${brief.draft!.id}`)}>View draft →</button>
         </section>

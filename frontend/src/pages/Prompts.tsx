@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { getPrompts, getDiscoveryStatus, type PromptListItem } from '../api/client';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
+import { getPrompts, type PromptListItem } from '../api/client';
 
 const LIVE_LINKS = [
   { id: 'openai', label: 'ChatGPT', url: 'https://chat.openai.com/' },
@@ -20,17 +20,21 @@ const PAGE_SIZE = 20;
 export function Prompts() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const promptGenerationRunIdParam = searchParams.get('prompt_generation_run_id');
+  const promptGenerationRunId = promptGenerationRunIdParam ? parseInt(promptGenerationRunIdParam, 10) : undefined;
+  const isValidRunId = promptGenerationRunIdParam !== null && promptGenerationRunId != null && !Number.isNaN(promptGenerationRunId);
+
   const [prompts, setPrompts] = useState<PromptListItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<number | null>(null);
-  const [discoveryDone, setDiscoveryDone] = useState(false);
 
   const loadPrompts = (atPage?: number) => {
     const p = atPage ?? page;
     const offset = (p - 1) * PAGE_SIZE;
-    getPrompts(PAGE_SIZE, offset)
+    getPrompts(PAGE_SIZE, offset, undefined, isValidRunId ? promptGenerationRunId : undefined)
       .then((r) => {
         setPrompts(r.prompts);
         setTotal(r.total);
@@ -41,13 +45,13 @@ export function Prompts() {
 
   useEffect(() => {
     loadPrompts();
-  }, [page]);
+  }, [page, promptGenerationRunId]);
 
+  // When switching between "all prompts" and "prompts for a specific generation run",
+  // always reset pagination to the first page.
   useEffect(() => {
-    getDiscoveryStatus()
-      .then((s) => setDiscoveryDone(s.discovery_done))
-      .catch(() => setDiscoveryDone(false));
-  }, []);
+    setPage(1);
+  }, [promptGenerationRunIdParam]);
 
   // When returning from generate page, refresh list so new prompts appear
   useEffect(() => {
@@ -59,25 +63,24 @@ export function Prompts() {
     }
   }, [location.state]);
 
-  if (error) return <div className="dashboard"><h1>Prompts</h1><p className="error">{error}</p></div>;
+  if (error) return <div className="page dashboard"><header className="page-header"><h1 className="page-title">Prompts</h1><p className="error">{error}</p></header></div>;
 
   return (
-    <div className="dashboard">
-      <header>
-        <h1>Prompts</h1>
-        <p>All prompts used for monitoring.</p>
-        <div className="section-actions" style={{ marginTop: '0.5rem' }}>
-          <button type="button" onClick={() => navigate('/prompts/generate')}>
-            Generate prompts
-          </button>
-          {!discoveryDone && (
-            <span className="section-desc" style={{ marginLeft: '0.5rem' }}>
-              (Add domains and run discovery first)
-            </span>
-          )}
-        </div>
+    <div className="page dashboard">
+      <header className="page-header">
+        <h1 className="page-title">Prompts</h1>
+        <p className="page-description">All prompts used for monitoring.</p>
+        {isValidRunId && (
+          <p className="section-desc" style={{ marginTop: '0.25rem' }}>
+            Showing prompts from generation run #{promptGenerationRunId}.{' '}
+            <button type="button" className="link-btn" onClick={() => navigate('/prompts')}>
+              Show all prompts
+            </button>
+          </p>
+        )}
       </header>
       <section className="section">
+        <h2 className="section-title">Prompt list</h2>
         {total > 0 && (
           <div className="pagination-bar">
             <button
@@ -101,7 +104,9 @@ export function Prompts() {
         )}
         {prompts.length === 0 ? (
           <p className="table-placeholder">
-            No prompts yet. Click &quot;Generate prompts&quot; to create prompts from your domain profiles (run discovery on Domains first).
+            {isValidRunId
+              ? 'No prompts were created in this prompt generation run yet.'
+              : 'No prompts yet. Use Prompt generation to create prompts from your domain profiles (run discovery on Domains first).'}
           </p>
         ) : (
           <div className="prompts-table-wrap">

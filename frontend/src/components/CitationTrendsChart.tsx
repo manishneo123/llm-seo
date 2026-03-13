@@ -24,7 +24,7 @@ export function CitationTrendsChart({ runs }: Props) {
       const date = r.started_at.slice(0, 10);
       if (!byDate[date]) {
         byDate[date] = { date };
-        for (const m of allModels) byDate[date][m] = undefined;
+        for (const m of allModels) byDate[date][m] = 0;
       }
       byDate[date][r.model] = r.citation_rate_pct;
     }

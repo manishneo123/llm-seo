@@ -12,6 +12,9 @@ markdown>=3.5.0
 # API
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
+bcrypt>=4.0.0
+PyJWT>=2.8.0
+reportlab>=4.0.9
 
 # DB (sqlite3 is stdlib)
 # Optional when scaling: psycopg2-binary, asyncpg
