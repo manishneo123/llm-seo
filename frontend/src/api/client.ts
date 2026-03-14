@@ -1,4 +1,12 @@
-const API_BASE = import.meta.env.VITE_API_URL || '';
+/** API base URL. In dev uses VITE_API_URL or localhost:8000. In production uses VITE_API_URL or, if unset, same origin (for proxy setups). */
+function getApiBase(): string {
+  const fromEnv = import.meta.env.VITE_API_URL;
+  if (fromEnv && typeof fromEnv === 'string' && fromEnv.trim() !== '') return fromEnv.trim();
+  if (import.meta.env.DEV) return 'http://localhost:8000';
+  if (typeof window !== 'undefined' && window.location?.origin) return window.location.origin;
+  return '';
+}
+const API_BASE = getApiBase();
 
 const AUTH_TOKEN_KEY = 'llm_seo_token';
 
@@ -882,26 +890,68 @@ export interface TrialRunResponse {
   slug: string;
   reused?: boolean;
   discovery?: TrialDiscovery;
+  /** When sync=true, full execution detail so no polling needed */
+  execution?: MonitoringExecutionDetail;
 }
 
-export async function runTrial(website: string, captchaToken?: string | null): Promise<TrialRunResponse> {
-  const body: { website: string; captcha_token?: string } = { website: website.trim() };
-  if (captchaToken && captchaToken.trim()) body.captcha_token = captchaToken.trim();
-  const res = await fetch(`${API_BASE}/api/trial/run`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || 'Trial failed');
+function getTrialErrorDetail(err: { detail?: unknown }): string {
+  const d = err.detail;
+  if (typeof d === 'string') return d;
+  if (Array.isArray(d) && d.length > 0 && d[0] && typeof d[0] === 'object' && 'msg' in d[0]) {
+    return String((d[0] as { msg: string }).msg);
   }
+  return 'Trial failed';
+}
+
+/** Throw if response is HTML. Avoids "Unexpected token '<'" when parsing as JSON. */
+function ensureJsonResponse(res: Response, requestedUrl?: string): void {
+  const ct = (res.headers.get('Content-Type') || '').toLowerCase();
+  if (ct.includes('text/html')) {
+    const urlHint = requestedUrl ? ` Request: ${requestedUrl}.` : '';
+    throw new Error(
+      `Server returned HTML instead of JSON.${urlHint} ` +
+        'If the URL points to your API (e.g. http://localhost:8000), the API may be down, returning an error page, or another process is using that port. ' +
+        'Start the API with: PYTHONPATH=. uvicorn api.main:app --port 8000. ' +
+        'If the URL points to your frontend origin, set VITE_API_URL in frontend/.env to your API base and restart dev or rebuild.'
+    );
+  }
+}
+
+export async function runTrial(
+  website: string,
+  captchaToken?: string | null,
+  sync?: boolean
+): Promise<TrialRunResponse> {
+  const body: { website: string; captcha_token?: string; sync?: boolean } = { website: website.trim() };
+  if (captchaToken && captchaToken.trim()) body.captcha_token = captchaToken.trim();
+  if (sync === true) body.sync = true;
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/api/trial/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    throw new Error(
+      e instanceof Error ? e.message : 'Network error. Check your connection and that the API is reachable.'
+    );
+  }
+  const url = `${API_BASE}/api/trial/run`;
+  if (!res.ok) {
+    ensureJsonResponse(res, url);
+    const err = await res.json().catch(() => ({})) as { detail?: unknown };
+    throw new Error(getTrialErrorDetail(err) || `Trial failed (${res.status})`);
+  }
+  ensureJsonResponse(res, url);
   return res.json();
 }
 
 export async function getTrialStatus(token: string): Promise<MonitoringExecutionDetail> {
-  const res = await fetch(`${API_BASE}/api/trial/status?token=${encodeURIComponent(token)}`);
+  const url = `${API_BASE}/api/trial/status?token=${encodeURIComponent(token)}`;
+  const res = await fetch(url);
   if (!res.ok) throw new Error(res.status === 404 ? 'Trial session not found' : 'Failed to fetch status');
+  ensureJsonResponse(res, url);
   return res.json();
 }
 
@@ -914,8 +964,10 @@ export interface TrialDirectoryItem {
 }
 
 export async function getTrialBySlug(slug: string): Promise<MonitoringExecutionDetail> {
-  const res = await fetch(`${API_BASE}/api/trial/by-slug/${encodeURIComponent(slug)}`);
+  const url = `${API_BASE}/api/trial/by-slug/${encodeURIComponent(slug)}`;
+  const res = await fetch(url);
   if (!res.ok) throw new Error(res.status === 404 ? 'No recent results for this domain' : 'Failed to load');
+  ensureJsonResponse(res, url);
   return res.json();
 }
 
@@ -931,8 +983,10 @@ export async function getTrialDirectory(params?: {
   if (params?.limit != null) search.set('limit', String(params.limit));
   if (params?.offset != null) search.set('offset', String(params.offset));
   const qs = search.toString();
-  const res = await fetch(`${API_BASE}/api/trial/directory${qs ? `?${qs}` : ''}`);
+  const url = `${API_BASE}/api/trial/directory${qs ? `?${qs}` : ''}`;
+  const res = await fetch(url);
   if (!res.ok) throw new Error('Failed to load directory');
+  ensureJsonResponse(res, url);
   return res.json();
 }
 

@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 from pathlib import Path
+
+logger = logging.getLogger("truseo.llm_task_queue")
 
 # Load .env when running as worker
 if __name__ == "__main__":
@@ -69,6 +72,7 @@ def enqueue_monitor_tasks(
             )
             count += 1
     conn.commit()
+    logger.info("enqueue_monitor_tasks execution_id=%s count=%s models=%s", execution_id, count, list(prompts_per_model.keys()))
     return count
 
 
@@ -114,6 +118,7 @@ def _mark_execution_finished_if_done(conn, execution_id: int) -> None:
     ).fetchone()
     if row and row["n"] and row["n"] > 0:
         return
+    logger.info("mark_execution_finished execution_id=%s", execution_id)
     conn.execute(
         "UPDATE runs SET status = 'finished', finished_at = CURRENT_TIMESTAMP WHERE execution_id = ?",
         (execution_id,),
@@ -142,6 +147,11 @@ def process_one_task(conn=None):
     task_id = row["id"]
     task_type = row["type"]
     payload = json.loads(row["payload"])
+    execution_id = payload.get("execution_id")
+    run_id = payload.get("run_id")
+    prompt_id = payload.get("prompt_id")
+    model = payload.get("model", "")
+    logger.info("process_task_start task_id=%s execution_id=%s run_id=%s prompt_id=%s model=%s", task_id, execution_id, run_id, prompt_id, model)
     conn.execute(
         "UPDATE llm_task_queue SET status = 'running', started_at = CURRENT_TIMESTAMP WHERE id = ?",
         (task_id,),
@@ -158,6 +168,7 @@ def process_one_task(conn=None):
             try:
                 response = run_one(prompt_text, model)
             except Exception as e:
+                logger.warning("process_task_llm_error task_id=%s execution_id=%s model=%s error=%s", task_id, execution_id, model, e)
                 response = f"[Error: {e}]"
                 error_message = str(e)
             _store_single_monitor_result(conn, run_id, prompt_id, model, response)
@@ -166,6 +177,7 @@ def process_one_task(conn=None):
     except Exception as e:
         error_message = str(e)
         execution_id = payload.get("execution_id")
+        logger.warning("process_task_failed task_id=%s execution_id=%s error=%s", task_id, execution_id, error_message)
         conn.execute(
             "UPDATE llm_task_queue SET status = 'failed', finished_at = CURRENT_TIMESTAMP, error_message = ? WHERE id = ?",
             (error_message, task_id),
@@ -174,13 +186,13 @@ def process_one_task(conn=None):
         if execution_id is not None:
             _mark_execution_finished_if_done(conn, execution_id)
         return True
+    logger.info("process_task_done task_id=%s execution_id=%s model=%s", task_id, execution_id, model)
     conn.execute(
         "UPDATE llm_task_queue SET status = 'done', finished_at = CURRENT_TIMESTAMP, error_message = ? WHERE id = ?",
         (error_message, task_id),
     )
     conn.commit()
     # After marking this task done, check if execution has no remaining tasks so we can mark it finished
-    execution_id = payload.get("execution_id")
     if execution_id is not None:
         _mark_execution_finished_if_done(conn, execution_id)
     return True
@@ -189,11 +201,13 @@ def process_one_task(conn=None):
 def run_worker_loop(conn=None, delay_seconds: float | None = None, once: bool = False):
     """Loop: process one task, sleep delay_seconds, repeat. If once=True, process at most one task and return."""
     delay = delay_seconds if delay_seconds is not None else get_queue_delay_seconds()
+    logger.info("worker_loop_start delay_seconds=%s once=%s", delay, once)
     if conn is None:
         conn = get_connection()
     while True:
         processed = process_one_task(conn)
         if once:
+            logger.info("worker_loop_exit_once processed=%s", processed)
             return
         if not processed:
             time.sleep(1)
@@ -245,6 +259,10 @@ def get_queue_status(conn=None, execution_id: int | None = None):
 
 if __name__ == "__main__":
     import argparse
+    logging.basicConfig(
+        level=os.environ.get("TRUSEO_LOG_LEVEL", "INFO").upper(),
+        format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+    )
     p = argparse.ArgumentParser(description="LLM task queue worker: process monitor_call tasks with delay.")
     p.add_argument("--once", action="store_true", help="Process one task and exit")
     p.add_argument("--delay", type=float, default=None, help="Seconds between tasks (default: QUEUE_DELAY_SECONDS or 3.5)")

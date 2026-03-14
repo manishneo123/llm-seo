@@ -78,16 +78,6 @@ app.add_middleware(
 
 
 _FRONTEND_DIST = Path(__file__).resolve().parents[1] / "frontend" / "dist"
-if _FRONTEND_DIST.exists():
-    app.mount("/assets", StaticFiles(directory=_FRONTEND_DIST / "assets"), name="assets")
-
-    @app.get("/", include_in_schema=False)
-    @app.get("/{full_path:path}", include_in_schema=False)
-    async def serve_frontend(full_path: str = ""):
-        index_path = _FRONTEND_DIST / "index.html"
-        if not index_path.exists():
-            raise HTTPException(status_code=404, detail="Frontend not built")
-        return FileResponse(index_path)
 
 
 def _scheduler_loop():
@@ -2258,12 +2248,39 @@ def _build_execution_pdf(execution: dict) -> bytes:
     return buf.read()
 
 
+def _trial_run_sync(execution_id: int, trial_user_id: int, domain_id: int, domain: str) -> None:
+    """Run monitoring for trial in the current thread (sync mode). Same logic as _run_trial_background but use_queue=False."""
+    from src.monitor.run_monitor import run
+    prompt_count = _trial_prompts_count()
+    delay = _trial_delay_seconds()
+    settings_snapshot = {
+        "website": domain,
+        "delay_seconds": delay,
+        "limit_prompts": prompt_count,
+        "domain_ids": [domain_id],
+    }
+    run(
+        execution_id=execution_id,
+        trigger_type="trial",
+        settings_snapshot=settings_snapshot,
+        user_id=trial_user_id,
+        models=None,
+        limit_prompts=prompt_count,
+        domain_ids=[domain_id],
+        delay_seconds=delay,
+        skip_prompts_with_recent_win=True,
+        use_queue=False,
+    )
+
+
 @app.post("/api/trial/run")
 def trial_run(request: Request, body: dict = Body(...)):
     """Start a trial: normalize website, add domain + minimal profile, generate 5 prompts, run monitoring. No auth.
     Rate-limited per IP; CAPTCHA required if TURNSTILE_SECRET_KEY is set; queue backpressure when busy.
-    If the same domain was run in the last 7 days, returns existing results (reused). Returns token, execution_id, slug for canonical URL /try/<slug>."""
+    If the same domain was run in the last 7 days, returns existing results (reused). Returns token, execution_id, slug for canonical URL /try/<slug>.
+    Optional body field sync=true: run discovery, prompts and monitoring in the request (blocking); response includes full execution detail so no polling needed."""
     website = (body.get("website") or "").strip()
+    sync_mode = body.get("sync") in (True, "true", "1")
     client_ip = _get_client_ip(request)
     logger.info("trial_run_start ip=%s website=%s", client_ip, website)
     domain = _normalize_website_to_domain(website)
@@ -2325,10 +2342,15 @@ def trial_run(request: Request, body: dict = Body(...)):
             conn.commit()
             _trial_rate_limit_record(conn, client_ip)
             discovery = _get_trial_discovery(conn, execution_id)
-            conn.close()
             out = {"token": token, "execution_id": execution_id, "slug": slug, "reused": True}
             if discovery:
                 out["discovery"] = discovery
+            if body.get("sync") in (True, "true", "1"):
+                detail = _execution_detail_by_id(conn, execution_id)
+                if detail is not None:
+                    detail["slug"] = slug
+                out["execution"] = detail
+            conn.close()
             return out
         _trial_queue_backpressure(conn)
         trial_user_id = _get_or_create_trial_user(conn)
@@ -2428,22 +2450,56 @@ def trial_run(request: Request, body: dict = Body(...)):
         conn.commit()
         _trial_rate_limit_record(conn, client_ip)
 
-        t = threading.Thread(
-            target=_run_trial_background,
-            args=(execution_id, trial_user_id, domain_id, domain),
-            daemon=True,
-        )
-        t.start()
-        logger.info(
-            "trial_run_background_started ip=%s domain=%s execution_id=%s",
-            client_ip,
-            domain,
-            execution_id,
-        )
-        out = {"token": token, "execution_id": execution_id, "slug": slug, "reused": False}
-        if discovery is not None:
-            out["discovery"] = discovery
-        return out
+        if sync_mode:
+            conn.close()
+            logger.info(
+                "trial_run_sync_start ip=%s domain=%s execution_id=%s",
+                client_ip,
+                domain,
+                execution_id,
+            )
+            try:
+                _trial_run_sync(execution_id, trial_user_id, domain_id, domain)
+            except Exception as e:
+                logger.exception("trial_run_sync_error ip=%s domain=%s execution_id=%s", client_ip, domain, execution_id)
+                conn = get_connection()
+                try:
+                    conn.execute(
+                        """UPDATE monitoring_executions SET status = 'failed', finished_at = CURRENT_TIMESTAMP WHERE id = ?""",
+                        (execution_id,),
+                    )
+                    conn.commit()
+                finally:
+                    conn.close()
+                raise HTTPException(status_code=500, detail=f"Trial run failed: {e!s}")
+            conn = get_connection()
+            try:
+                detail = _execution_detail_by_id(conn, execution_id)
+                if detail is not None:
+                    detail["slug"] = slug
+                out = {"token": token, "execution_id": execution_id, "slug": slug, "reused": False, "execution": detail}
+                if discovery is not None:
+                    out["discovery"] = discovery
+                return out
+            finally:
+                conn.close()
+        else:
+            t = threading.Thread(
+                target=_run_trial_background,
+                args=(execution_id, trial_user_id, domain_id, domain),
+                daemon=True,
+            )
+            t.start()
+            logger.info(
+                "trial_run_background_started ip=%s domain=%s execution_id=%s",
+                client_ip,
+                domain,
+                execution_id,
+            )
+            out = {"token": token, "execution_id": execution_id, "slug": slug, "reused": False}
+            if discovery is not None:
+                out["discovery"] = discovery
+            return out
     except HTTPException as e:
         logger.warning(
             "trial_run_http_error ip=%s domain=%s detail=%s status=%s",
@@ -2551,12 +2607,15 @@ def trial_status(token: str = Query(..., alias="token")):
             (token,),
         ).fetchone()
         if not row:
+            logger.warning("trial_status_token_not_found token_prefix=%s", (token[:8] + "…") if token and len(token) > 8 else token)
             raise HTTPException(status_code=404, detail="Trial session not found")
         execution_id = row["execution_id"]
         _reconcile_execution_if_done(conn, execution_id)
         out = _execution_detail_by_id(conn, execution_id)
         if not out:
+            logger.warning("trial_status_execution_not_found execution_id=%s", execution_id)
             raise HTTPException(status_code=404, detail="Execution not found")
+        logger.info("trial_status_ok execution_id=%s status=%s", execution_id, out.get("status"))
         return out
     finally:
         conn.close()
@@ -3611,6 +3670,19 @@ def get_reports_drafts(
         }
     finally:
         conn.close()
+
+
+# SPA fallback: register last so /api/* and other routes take precedence. Serves frontend dist for non-API paths.
+if _FRONTEND_DIST.exists():
+    app.mount("/assets", StaticFiles(directory=_FRONTEND_DIST / "assets"), name="assets")
+
+    @app.get("/", include_in_schema=False)
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_frontend(full_path: str = ""):
+        index_path = _FRONTEND_DIST / "index.html"
+        if not index_path.exists():
+            raise HTTPException(status_code=404, detail="Frontend not built")
+        return FileResponse(index_path)
 
 
 if __name__ == "__main__":

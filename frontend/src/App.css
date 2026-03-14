@@ -359,6 +359,17 @@
   margin-bottom: var(--space-xs);
 }
 
+.form-label-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-weight: normal;
+  cursor: pointer;
+}
+.form-label-inline input[type="checkbox"] {
+  margin: 0;
+}
+
 .form-input,
 .form-textarea,
 .form-select {

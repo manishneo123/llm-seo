@@ -106,6 +106,14 @@ Or call `GET /api/queue/status?token=YOUR_TRIAL_TOKEN` (or `?execution_id=123`).
 
 **Production:** The app is hosted at **https://truseo.io**. For production builds, set `VITE_API_URL` (or proxy `/api` to your API) and configure `API_BASE_URL` / `PUBLIC_URL` in `.env` accordingly.
 
+**Trial / domain analysis not working?**
+
+1. **API URL** — The frontend must call the same API that serves the app. Build with `VITE_API_URL=` (empty) if the API is on the same origin (e.g. reverse proxy); otherwise set `VITE_API_URL=https://your-api-host` so `POST /api/trial/run` and `GET /api/trial/status` hit the correct server.
+2. **Queue worker** — Trial runs enqueue LLM tasks; the worker must be running (`python3 -m src.monitor.llm_task_queue`) or runs stay "in progress" and never finish.
+3. **Rate limit / CAPTCHA** — If you hit rate limit (429) or CAPTCHA (400), the form shows the error. Adjust `TRIAL_RATE_LIMIT_*` or configure Turnstile; leave `TURNSTILE_SECRET_KEY` unset to disable CAPTCHA.
+4. **Domain reachability** — The server checks that the domain responds to HTTP(S). Invalid or unreachable domains return a clear error.
+5. **Logs** — Server logs include `trial_run_start`, `trial_run_domain_ok`, `trial_status_ok` / `trial_status_token_not_found`. Use them to see where the flow stops.
+
 **6. Gap & Brief agent (weekly)**
 
 ```bash

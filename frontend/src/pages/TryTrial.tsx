@@ -399,7 +399,7 @@ export function TryTrial() {
   const { slug: slugParam } = useParams<{ slug: string }>();
   const navigate = useNavigate();
   const [website, setWebsite] = useState('');
-  const [token, setToken] = useState<string | null>(() => sessionStorage.getItem(TRIAL_TOKEN_KEY));
+  const [token, setToken] = useState<string | null>(null);
   const [execution, setExecution] = useState<MonitoringExecutionDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -407,10 +407,34 @@ export function TryTrial() {
   const [slugLoaded, setSlugLoaded] = useState(false);
   const [turnstileReady, setTurnstileReady] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const [lastTrialSlug, setLastTrialSlug] = useState<string | null>(null);
+  const [syncMode, setSyncMode] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const turnstileContainerRef = useRef<HTMLDivElement | null>(null);
+  const pollFailuresRef = useRef(0);
 
   const isDone = execution && (execution.status === 'finished' || execution.status === 'failed');
+
+  // On home page load/refresh: always show the analyse form (clear any previous trial state so multiple users see a fresh form)
+  useEffect(() => {
+    if (!slugParam) {
+      sessionStorage.removeItem(TRIAL_TOKEN_KEY);
+      setToken(null);
+      setExecution(null);
+      setLastTrialSlug(null);
+      setStatusError(null);
+    }
+  }, []);
+
+  // On slug page without token, restore from sessionStorage so polling can run (e.g. same user opened shared link)
+  useEffect(() => {
+    if (slugParam && !token) {
+      const stored = sessionStorage.getItem(TRIAL_TOKEN_KEY);
+      if (stored) setToken(stored);
+    }
+  }, [slugParam, token]);
 
   // Load by slug when on /try/:slug
   useEffect(() => {
@@ -418,10 +442,12 @@ export function TryTrial() {
       setSlugLoaded(true);
       return;
     }
+    setStatusError(null);
     getTrialBySlug(slugParam)
       .then((data) => {
         setExecution(data);
         setSlugLoaded(true);
+        pollFailuresRef.current = 0;
       })
       .catch(() => {
         const stored = sessionStorage.getItem(TRIAL_TOKEN_KEY);
@@ -474,13 +500,17 @@ export function TryTrial() {
     };
   }, [turnstileReady, slugParam]);
 
-  // Poll by token only when on a slug page (so /try always shows a fresh form; progress is only on /try/:slug)
+  // Poll by token (on home page after submit, or on /try/:slug) so progress/results show without redirect
   useEffect(() => {
-    if (!token || !slugParam) return;
+    if (!token) return;
+    pollFailuresRef.current = 0;
+    setStatusError(null);
     function poll() {
       getTrialStatus(token!)
         .then((data) => {
+          pollFailuresRef.current = 0;
           setExecution(data);
+          setStatusError(null);
           if (data.status === 'finished' || data.status === 'failed') {
             if (pollRef.current) {
               clearInterval(pollRef.current);
@@ -488,14 +518,25 @@ export function TryTrial() {
             }
           }
         })
-        .catch(() => {});
+        .catch(() => {
+          pollFailuresRef.current += 1;
+          if (pollFailuresRef.current >= 4) {
+            setStatusError(
+              'Unable to load status. The analysis may still be running—check back in a few minutes, or run a new trial below.'
+            );
+            if (pollRef.current) {
+              clearInterval(pollRef.current);
+              pollRef.current = null;
+            }
+          }
+        });
     }
     poll();
     pollRef.current = setInterval(poll, POLL_INTERVAL_MS);
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, [token, slugParam]);
+  }, [token, retryCount]);
 
   // Poll by slug when viewing /try/:slug without a token and execution is still running
   useEffect(() => {
@@ -518,15 +559,21 @@ export function TryTrial() {
     if (!value) return;
     setError(null);
     setSubmitting(true);
-    runTrial(value, turnstileToken ?? undefined)
+    runTrial(value, turnstileToken ?? undefined, syncMode)
       .then((res) => {
         if (!res || !res.token) {
           throw new Error('Trial did not return a session token. Please try again.');
         }
         sessionStorage.setItem(TRIAL_TOKEN_KEY, res.token);
         setToken(res.token);
-        setExecution(null);
-        navigate(`/try/${res.slug}`, { replace: true });
+        setLastTrialSlug(res.slug);
+        setStatusError(null);
+        pollFailuresRef.current = 0;
+        if (res.execution) {
+          setExecution(res.execution);
+        } else {
+          setExecution(null);
+        }
       })
       .catch((err) => {
         setError(err instanceof Error ? err.message : 'Trial failed');
@@ -538,9 +585,11 @@ export function TryTrial() {
     sessionStorage.removeItem(TRIAL_TOKEN_KEY);
     setToken(null);
     setExecution(null);
+    setLastTrialSlug(null);
+    setStatusError(null);
     setError(null);
     setWebsite('');
-    if (slugParam) navigate('/try', { replace: true });
+    if (slugParam) navigate('/', { replace: true });
   }
 
   // Viewing by slug: show loading until slug load attempted
@@ -561,14 +610,14 @@ export function TryTrial() {
         <header className="page-header">
           <h1 className="page-title">Try it free</h1>
           <p className="page-description">No recent results for this domain (or results are older than 7 days). Run a new trial below.</p>
-          <Link to="/try" className="btn-primary">Run a trial</Link>
+          <Link to="/" className="btn-primary">Run a trial</Link>
         </header>
       </div>
     );
   }
 
-  // On /try (no slug) always show a fresh form so every visitor sees the same form; trial progress/results live on /try/:slug
-  if (!slugParam) {
+  // On home page (no slug) show form only when there is no active trial; otherwise show progress/results below
+  if (!slugParam && !token) {
     return (
       <div className="page dashboard try-results-page">
         <header className="page-header">
@@ -589,7 +638,10 @@ export function TryTrial() {
             <CardDescription>We&apos;ll discover your domain, generate prompts, and run monitoring.</CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit} className="trial-form">
+            <form
+              className="trial-form"
+              onSubmit={(e) => e.preventDefault()}
+            >
               <div className="form-group">
                 <label htmlFor="trial-website" className="form-label">Website</label>
                 <input
@@ -599,6 +651,12 @@ export function TryTrial() {
                   placeholder="example.com"
                   value={website}
                   onChange={(e) => setWebsite(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleSubmit(e as unknown as React.FormEvent);
+                    }
+                  }}
                   disabled={submitting}
                   autoFocus
                 />
@@ -606,13 +664,25 @@ export function TryTrial() {
               {TURNSTILE_SITE_KEY && (
                 <div ref={turnstileContainerRef} className="trial-turnstile-wrap" aria-label="CAPTCHA" />
               )}
+              <div className="form-group">
+                <label className="form-label form-label-inline">
+                  <input
+                    type="checkbox"
+                    checked={syncMode}
+                    onChange={(e) => setSyncMode(e.target.checked)}
+                    disabled={submitting}
+                  />
+                  <span>Run synchronously (wait for full result; may take several minutes)</span>
+                </label>
+              </div>
               {error && <p className="form-error">{error}</p>}
               <button
-                type="submit"
+                type="button"
                 className="btn-primary"
                 disabled={submitting || (!!TURNSTILE_SITE_KEY && !turnstileToken)}
+                onClick={() => handleSubmit({ preventDefault: () => {} } as React.FormEvent)}
               >
-                {submitting ? 'Discovering domain…' : 'Analyse'}
+                {submitting ? (syncMode ? 'Running analysis…' : 'Discovering domain…') : 'Analyse'}
               </button>
             </form>
           </CardContent>
@@ -649,7 +719,22 @@ export function TryTrial() {
       <div className="page dashboard try-results-page">
         <header className="page-header">
           <h1 className="page-title">Trial</h1>
-          <p className="page-description">Generating prompts and starting monitoring…</p>
+          <p className="page-description">
+            {statusError || 'Generating prompts and starting monitoring…'}
+          </p>
+          {statusError && (
+            <p className="page-description" style={{ marginTop: '1rem' }}>
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{ marginRight: '0.5rem' }}
+                onClick={() => { setStatusError(null); pollFailuresRef.current = 0; setRetryCount((c) => c + 1); }}
+              >
+                Retry
+              </button>
+              <Link to="/" className="btn-primary">Run a new trial</Link>
+            </p>
+          )}
         </header>
       </div>
     );
@@ -739,7 +824,7 @@ export function TryTrial() {
   return (
     <ResultsView
       execution={execution}
-      slugDisplay={slugParam ?? undefined}
+      slugDisplay={lastTrialSlug ?? slugParam ?? undefined}
       onStartOver={handleStartOver}
       showStartOver={!!slugParam || !!token}
     />

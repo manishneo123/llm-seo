@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { BrowserRouter, Routes, Route, NavLink, Link, useNavigate, useLocation } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, NavLink, Link, useNavigate, useLocation, Navigate } from 'react-router-dom'
 import { ChevronDown, Settings as SettingsIcon, LogOut, BarChart3, Github } from 'lucide-react'
 import { Dashboard } from './pages/Dashboard'
 import { Briefs } from './pages/Briefs'
@@ -23,7 +23,8 @@ import { Signin } from './pages/Signin'
 import { Signup } from './pages/Signup'
 import { TryTrial } from './pages/TryTrial'
 import { Terms } from './pages/Terms'
-import { AuthProvider, useAuth } from './context/AuthContext'
+import { AuthProvider } from './context/AuthContext'
+import { useAuth } from './context/useAuth'
 import { PageMeta } from './components/PageMeta'
 import './App.css'
 
@@ -199,7 +200,7 @@ function AppRoutes() {
         <Route path="/how-it-works" element={<HowItWorks />} />
         <Route path="/trial-directory" element={<TrialDirectory />} />
          <Route path="/terms" element={<Terms />} />
-        <Route path="/try" element={<TryTrial />} />
+        <Route path="/try" element={<Navigate to="/" replace />} />
         <Route path="/try/:slug" element={<TryTrial />} />
         <Route path="/" element={<HomePage />} />
         <Route path="/domains" element={<ProtectedRoute><Domains /></ProtectedRoute>} />
