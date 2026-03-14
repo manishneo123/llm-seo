@@ -410,7 +410,6 @@ export function TryTrial() {
   const [statusError, setStatusError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   const [lastTrialSlug, setLastTrialSlug] = useState<string | null>(null);
-  const [syncMode, setSyncMode] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const turnstileContainerRef = useRef<HTMLDivElement | null>(null);
   const pollFailuresRef = useRef(0);
@@ -559,7 +558,7 @@ export function TryTrial() {
     if (!value) return;
     setError(null);
     setSubmitting(true);
-    runTrial(value, turnstileToken ?? undefined, syncMode)
+    runTrial(value, turnstileToken ?? undefined, false)
       .then((res) => {
         if (!res || !res.token) {
           throw new Error('Trial did not return a session token. Please try again.');
@@ -664,17 +663,6 @@ export function TryTrial() {
               {TURNSTILE_SITE_KEY && (
                 <div ref={turnstileContainerRef} className="trial-turnstile-wrap" aria-label="CAPTCHA" />
               )}
-              <div className="form-group">
-                <label className="form-label form-label-inline">
-                  <input
-                    type="checkbox"
-                    checked={syncMode}
-                    onChange={(e) => setSyncMode(e.target.checked)}
-                    disabled={submitting}
-                  />
-                  <span>Run synchronously (wait for full result; may take several minutes)</span>
-                </label>
-              </div>
               {error && <p className="form-error">{error}</p>}
               <button
                 type="button"
@@ -682,7 +670,7 @@ export function TryTrial() {
                 disabled={submitting || (!!TURNSTILE_SITE_KEY && !turnstileToken)}
                 onClick={() => handleSubmit({ preventDefault: () => {} } as React.FormEvent)}
               >
-                {submitting ? (syncMode ? 'Running analysis…' : 'Discovering domain…') : 'Analyse'}
+                {submitting ? 'Discovering domain…' : 'Analyse'}
               </button>
             </form>
           </CardContent>
