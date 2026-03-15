@@ -480,19 +480,40 @@ export function TryTrial() {
     return () => {};
   }, []);
 
-  // Render Turnstile widget when script is ready and form is shown (no slug)
+  // Render Turnstile widget when script is ready and form is shown (no slug). Cloudflare may set window.turnstile shortly after script load.
   useEffect(() => {
     if (!TURNSTILE_SITE_KEY || !turnstileReady || slugParam) return;
     const el = turnstileContainerRef.current;
-    if (!el || !(window as unknown as { turnstile?: { render: (el: HTMLElement, opts: { sitekey: string; callback: (token: string) => void }) => string } }).turnstile) return;
-    const turnstile = (window as unknown as { turnstile: { render: (el: HTMLElement, opts: { sitekey: string; callback: (token: string) => void }) => string } }).turnstile;
-    const widgetId = turnstile.render(el, {
-      sitekey: TURNSTILE_SITE_KEY,
-      callback: (token: string) => setTurnstileToken(token),
-    });
+    if (!el) return;
+
+    const win = window as unknown as { turnstile?: { render: (el: HTMLElement, opts: { sitekey: string; callback: (token: string) => void }) => string; reset?: (id: string) => void } };
+    let widgetId: string | null = null;
+
+    function doRender(): void {
+      if (!win.turnstile || !el) return;
+      const rawId = win.turnstile.render(el, {
+        sitekey: TURNSTILE_SITE_KEY as string,
+        callback: (token: string) => setTurnstileToken(token),
+      });
+      widgetId = rawId === undefined || rawId === null ? null : rawId;
+    }
+
+    doRender();
+    if (widgetId === null) {
+      const t = setTimeout(doRender, 200);
+      return () => {
+        clearTimeout(t);
+        try {
+          if (typeof widgetId === 'string') win.turnstile?.reset?.(widgetId);
+        } catch {
+          /* ignore */
+        }
+      };
+    }
+
     return () => {
       try {
-        (window as unknown as { turnstile?: { reset: (id: string) => void } }).turnstile?.reset?.(widgetId);
+        if (typeof widgetId === 'string') win.turnstile?.reset?.(widgetId);
       } catch {
         /* ignore */
       }

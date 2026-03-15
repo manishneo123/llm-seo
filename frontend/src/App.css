@@ -2330,6 +2330,8 @@
 .trial-turnstile-wrap {
   margin-bottom: var(--space-lg);
   min-height: 65px;
+  min-width: 300px;
+  width: 100%;
 }
 
 .trial-directory-list {
