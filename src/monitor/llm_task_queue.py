@@ -7,15 +7,19 @@ import os
 import time
 from pathlib import Path
 
+import openlit
+
 logger = logging.getLogger("truseo.llm_task_queue")
 
-# Load .env when running as worker
+# Load .env and initialize OpenLIT when running as a standalone worker process.
 if __name__ == "__main__":
     try:
         from dotenv import load_dotenv
         load_dotenv(Path(__file__).resolve().parents[2] / ".env")
     except ImportError:
         pass
+    # OpenLIT uses OTEL_* environment variables configured in .env.
+    openlit.init()
 
 # Optional project root
 try:
@@ -79,7 +83,43 @@ def enqueue_monitor_tasks(
 def _store_single_monitor_result(conn, run_id: int, prompt_id: int, model: str, response: str) -> None:
     """Parse response and write citations, visibility, mentions, and response for one (run_id, prompt_id, model)."""
     debug = os.environ.get("DEBUG_CITATIONS", "").lower() in ("1", "true", "yes")
-    tracked_domains = load_tracked_domains()
+
+    # For queued monitor runs, derive the monitored domain(s) for this execution and only use those
+    # as "own" domains when computing mentions.
+    tracked_domains: list[str] = []
+    try:
+        row = conn.execute("SELECT execution_id FROM runs WHERE id = ?", (run_id,)).fetchone()
+        execution_id = row["execution_id"] if row else None
+        if execution_id is not None:
+            exec_row = conn.execute(
+                "SELECT settings_snapshot FROM monitoring_executions WHERE id = ?",
+                (execution_id,),
+            ).fetchone()
+            settings_snapshot = None
+            if exec_row and exec_row["settings_snapshot"]:
+                try:
+                    settings_snapshot = json.loads(exec_row["settings_snapshot"])
+                except Exception:
+                    settings_snapshot = None
+            domain_ids = []
+            if isinstance(settings_snapshot, dict):
+                website = (settings_snapshot.get("website") or "").strip()
+                if website:
+                    tracked_domains = [website]
+                domain_ids = settings_snapshot.get("domain_ids") or []
+            if not tracked_domains and domain_ids:
+                if not isinstance(domain_ids, list):
+                    domain_ids = [domain_ids]
+                placeholders = ",".join("?" * len(domain_ids))
+                rows = conn.execute(
+                    f"SELECT domain FROM domains WHERE id IN ({placeholders})",
+                    tuple(domain_ids),
+                ).fetchall()
+                tracked_domains = [r["domain"] for r in rows if r["domain"]]
+    except Exception:
+        tracked_domains = []
+    if not tracked_domains:
+        tracked_domains = load_tracked_domains()
     parsed = parse_response(prompt_id, model, response or "", debug=debug)
     for _pid, _m, cited_domain, snippet, is_own_domain in parsed:
         conn.execute(
@@ -87,9 +127,13 @@ def _store_single_monitor_result(conn, run_id: int, prompt_id: int, model: str, 
             (run_id, prompt_id, model, cited_domain, (snippet or "")[:500], is_own_domain),
         )
     had_own_citation = 1 if any(is_own for (_, _, _, _, is_own) in parsed if is_own) else 0
-    # Mentions can include both own brand/domains and competitors; we only want brand_mentioned=1
-    # when at least one mention is our own (is_own_domain=True).
-    mentions_list = get_mentions_in_text(response or "", tracked_domains=tracked_domains)
+    # Mentions can include both monitored domains and competitors; for "brand_mentioned" we only care
+    # about the monitored domain(s), not global platform brands.
+    mentions_list = get_mentions_in_text(
+        response or "",
+        tracked_domains=tracked_domains,
+        brand_names=[],  # restrict "own" to monitored domain(s) only
+    )
     brand_mentioned = 1 if any(is_own for (_, is_own) in mentions_list) else 0
     substantive = len(parsed) > 0 or (len((response or "").strip()) >= 100)
     competitor_only = 1 if (had_own_citation == 0 and brand_mentioned == 0 and substantive) else 0

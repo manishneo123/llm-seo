@@ -9,10 +9,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
+import openlit
+
 from src.db.connection import get_connection, init_db
 from src.monitor.query_runner import run_all_prompts, MODELS, get_available_models
 from src.monitor.citation_parser import parse_response, load_tracked_domains
 from src.monitor.mention_detector import brand_mentioned_in_text, get_mentions_in_text
+
+
+# Initialize OpenLIT for CLI/one-off monitor runs (uses OTEL_* env variables).
+openlit.init()
 
 
 def _validate_domain_ids(conn, domain_ids: list[int], user_id: int | None) -> None:
@@ -284,7 +290,26 @@ def run(
         results = run_all_prompts(prompts, models=models, delay_seconds=delay, progress_callback=_progress)
 
     debug_citations = os.environ.get("DEBUG_CITATIONS", "").lower() in ("1", "true", "yes")
-    tracked_domains = load_tracked_domains()
+
+    # For visibility/brand logic, only treat the domains being monitored in this execution as "own".
+    # Prefer explicit domain_ids or trial website from settings_snapshot; fall back to global list.
+    tracked_domains: list[str] = []
+    try:
+        if domain_ids:
+            placeholders = ",".join("?" * len(domain_ids))
+            rows = conn.execute(
+                f"SELECT domain FROM domains WHERE id IN ({placeholders})",
+                domain_ids,
+            ).fetchall()
+            tracked_domains = [r["domain"] for r in rows if r["domain"]]
+        elif settings_snapshot and isinstance(settings_snapshot, dict):
+            trial_website = (settings_snapshot.get("website") or "").strip()
+            if trial_website:
+                tracked_domains = [trial_website]
+        if not tracked_domains:
+            tracked_domains = load_tracked_domains()
+    except Exception:
+        tracked_domains = load_tracked_domains()
     for prompt_id, _text, model, response in results:
         run_id = run_ids[model]
         if debug_citations:
@@ -300,9 +325,13 @@ def run(
 
         # run_prompt_visibility: had_own_citation, brand_mentioned, competitor_only
         had_own_citation = 1 if any(is_own for (_, _, _, _, is_own) in parsed if is_own) else 0
-        # Mentions can include both own brand/domains and competitors; we only want brand_mentioned=1
-        # when at least one mention is our own (is_own_domain=True).
-        mentions_list = get_mentions_in_text(response or "", tracked_domains=tracked_domains)
+        # Mentions can include both our domain and competitors; for "brand_mentioned" we only care
+        # about the submitted/selected domain(s), not global platform brands.
+        mentions_list = get_mentions_in_text(
+            response or "",
+            tracked_domains=tracked_domains,
+            brand_names=[],  # restrict "own" to the monitored domain(s) only
+        )
         brand_mentioned = 1 if any(is_own for (_, is_own) in mentions_list) else 0
         substantive = len(parsed) > 0 or (len((response or "").strip()) >= 100)
         competitor_only = 1 if (had_own_citation == 0 and brand_mentioned == 0 and substantive) else 0

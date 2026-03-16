@@ -17,6 +17,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
+import openlit
+
 from fastapi import FastAPI, HTTPException, Body, Query, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
@@ -46,6 +48,10 @@ if not logger.handlers:
         level=os.environ.get("TRUSEO_LOG_LEVEL", "INFO").upper(),
         format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
     )
+
+# Initialize OpenLIT observability for the API process.
+# Uses OTEL_* environment variables (OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_EXPORTER_OTLP_HEADERS, OTEL_SERVICE_NAME, etc.).
+openlit.init()
 
 
 def _rewrite_image_urls_in_markdown(body_md: str) -> str:
