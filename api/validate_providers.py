@@ -41,7 +41,7 @@ def validate_anthropic(api_key: str, model: str | None = None) -> tuple[bool, st
         use_model = (model or "").strip() or DEFAULT_MODELS["anthropic"]
         client.messages.create(
             model=use_model,
-            max_tokens=5,
+            max_output_tokens=5,
             messages=[{"role": "user", "content": "Hi"}],
         )
         return True, None

@@ -136,7 +136,7 @@ def _generate_prompts_openai(niche: str, count: int, api_key: str) -> list[str]:
     model = os.environ.get("OPENAI_MODEL", "gpt-5.4").strip() or "gpt-5.4"
     response = client.chat.completions.create(
         model=model,
-        max_tokens=4096,
+        max_completion_tokens=4096,
         messages=[{"role": "user", "content": _PROMPT_INSTRUCTION.format(niche=context, count=count)}],
     )
     text = (response.choices[0].message.content or "").strip()

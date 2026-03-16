@@ -44,7 +44,7 @@ def extract_profile_with_openai(domain: str, crawled_text: str, api_key: str | N
     model = os.environ.get("OPENAI_MODEL", "gpt-5.4").strip() or "gpt-5.4"
     r = client.chat.completions.create(
         model=model,
-        max_tokens=1024,
+        max_completion_tokens=1024,
         messages=[{"role": "user", "content": content}],
     )
     raw = (r.choices[0].message.content or "").strip()
@@ -96,11 +96,11 @@ def _normalize_categories(categories: list | None, primary_category: str | None 
 
 
 def extract_profile(domain: str, crawled_text: str) -> dict:
-    """Extract profile using Anthropic if key set, else OpenAI. Fallback to default if neither."""
-    if (os.environ.get("ANTHROPIC_API_KEY") or "").strip():
-        return extract_profile_with_anthropic(domain, crawled_text)
+    """Extract profile using OpenAI if key set, else Anthropic. Fallback to default if neither."""
     if (os.environ.get("OPENAI_API_KEY") or "").strip():
         return extract_profile_with_openai(domain, crawled_text)
+    if (os.environ.get("ANTHROPIC_API_KEY") or "").strip():
+        return extract_profile_with_anthropic(domain, crawled_text)
     return _default_profile(domain)
 
 

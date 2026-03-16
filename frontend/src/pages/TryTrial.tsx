@@ -13,6 +13,7 @@ import {
 } from '../api/client';
 const API_BASE = import.meta.env.VITE_API_URL || '';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/Card';
+import { CheckCircle2, Sparkles, AlertTriangle, Circle } from 'lucide-react';
 
 const TRIAL_TOKEN_KEY = 'llm_seo_trial_token';
 const POLL_INTERVAL_MS = 2500;
@@ -31,25 +32,36 @@ type VisibilityValue = {
   competitor_only: boolean;
 };
 
-function getVisibilityStatus(v?: VisibilityValue): 'cited' | 'brand' | 'competitor' | 'none' {
-  if (!v) return 'none';
-  if (v.had_own_citation) return 'cited';
-  if (v.brand_mentioned) return 'brand';
-  if (v.competitor_only) return 'competitor';
-  return 'none';
-}
-
 function VisibilityDot({ value }: { value?: VisibilityValue }) {
-  const status = getVisibilityStatus(value);
-  const label =
-    status === 'cited'
-      ? 'Cited'
-      : status === 'brand'
-        ? 'Brand mentioned'
-        : status === 'competitor'
-          ? 'Competitor only'
-          : 'Not present';
-  return <span className={`visibility-dot visibility-dot--${status}`} aria-label={label} title={label} />;
+  if (!value) {
+    return (
+      <Circle className="visibility-icon visibility-icon--none" aria-label="Not present" />
+    );
+  }
+  const items: { key: string; label: string }[] = [];
+  if (value.had_own_citation) {
+    items.push({ key: 'cited', label: 'Cited' });
+  }
+  if (value.brand_mentioned) {
+    items.push({ key: 'brand', label: 'Brand mentioned' });
+  }
+  if (value.competitor_only) {
+    items.push({ key: 'competitor', label: 'Competitor only' });
+  }
+  if (items.length === 0) {
+    items.push({ key: 'none', label: 'Not present' });
+  }
+  const combinedLabel = items.map((i) => i.label).join(', ');
+  return (
+    <span className="visibility-dot-multi" aria-label={combinedLabel} title={combinedLabel}>
+      {items.map((it) => {
+        if (it.key === 'cited') return <CheckCircle2 key={it.key} className="visibility-icon visibility-icon--cited" />;
+        if (it.key === 'brand') return <Sparkles key={it.key} className="visibility-icon visibility-icon--brand" />;
+        if (it.key === 'competitor') return <AlertTriangle key={it.key} className="visibility-icon visibility-icon--competitor" />;
+        return <Circle key={it.key} className="visibility-icon visibility-icon--none" />;
+      })}
+    </span>
+  );
 }
 
 function normalizeModelKey(model: string): string {
@@ -319,19 +331,19 @@ function ResultsView({
           <CardContent className="execution-visibility-content">
             <div className="visibility-legend">
               <span className="visibility-legend-item">
-                <span className="visibility-dot visibility-dot--cited" />
+                <CheckCircle2 className="visibility-icon visibility-icon--cited" />
                 Cited
               </span>
               <span className="visibility-legend-item">
-                <span className="visibility-dot visibility-dot--brand" />
+                <Sparkles className="visibility-icon visibility-icon--brand" />
                 Brand mentioned
               </span>
               <span className="visibility-legend-item">
-                <span className="visibility-dot visibility-dot--competitor" />
+                <AlertTriangle className="visibility-icon visibility-icon--competitor" />
                 Competitor only
               </span>
               <span className="visibility-legend-item">
-                <span className="visibility-dot visibility-dot--none" />
+                <Circle className="visibility-icon visibility-icon--none" />
                 Not present
               </span>
             </div>

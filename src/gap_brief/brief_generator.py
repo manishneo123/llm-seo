@@ -43,7 +43,7 @@ def generate_brief(
     system_extra = "\n\nAdditional guidance from past performance (prefer these): " + brief_extra if brief_extra else ""
     response = client.messages.create(
         model=(os.environ.get("ANTHROPIC_MODEL") or "claude-sonnet-4-6").strip() or "claude-sonnet-4-6",
-        max_tokens=2048,
+        max_output_tokens=2048,
         messages=[{
             "role": "user",
             "content": f"""The following user query currently does NOT cite our site. We want to create content that could be cited for this query.

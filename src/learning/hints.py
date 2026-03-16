@@ -34,7 +34,7 @@ def generate_hints_with_anthropic(summary: str, api_key: str) -> dict:
     client = Anthropic(api_key=api_key)
     response = client.messages.create(
         model=(os.environ.get("ANTHROPIC_MODEL") or "claude-sonnet-4-6").strip() or "claude-sonnet-4-6",
-        max_tokens=1024,
+        max_output_tokens=1024,
         messages=[{"role": "user", "content": _HINTS_PROMPT.format(summary=summary)}],
     )
     text = response.content[0].text if response.content else ""
@@ -47,7 +47,7 @@ def generate_hints_with_openai(summary: str, api_key: str) -> dict:
     model = os.environ.get("OPENAI_MODEL", "gpt-5.4").strip() or "gpt-5.4"
     response = client.chat.completions.create(
         model=model,
-        max_tokens=1024,
+        max_completion_tokens=1024,
         messages=[{"role": "user", "content": _HINTS_PROMPT.format(summary=summary)}],
     )
     text = (response.choices[0].message.content or "").strip()

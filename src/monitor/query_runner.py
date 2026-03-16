@@ -57,7 +57,7 @@ def query_openai(prompt: str, api_key: str | None = None) -> str:
         kwargs = {
             "model": model,
             "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": 1024,
+            "max_completion_tokens": 1024,
             "web_search_options": {"search_context_size": "medium"},
         }
     else:
@@ -65,7 +65,7 @@ def query_openai(prompt: str, api_key: str | None = None) -> str:
         kwargs = {
             "model": model,
             "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": 1024,
+            "max_completion_tokens": 1024,
         }
     r = client.chat.completions.create(**kwargs)
     if not r.choices:
