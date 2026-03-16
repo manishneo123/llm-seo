@@ -2201,6 +2201,27 @@
 .trial-detail-list li {
   margin-bottom: var(--space-sm);
 }
+
+.trial-cited-domain {
+  font-weight: var(--font-medium);
+}
+
+.trial-cited-domain--own {
+  font-weight: var(--font-semibold);
+  color: #4f46e5;
+}
+
+.trial-mention {
+  font-weight: var(--font-medium);
+}
+
+.trial-mention--own {
+  color: #4f46e5;
+}
+
+.trial-mention--competitor {
+  color: #ea580c;
+}
 .trial-own-badge {
   font-size: 0.7rem;
   margin-left: var(--space-sm);

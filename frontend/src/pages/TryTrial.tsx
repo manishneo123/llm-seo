@@ -135,10 +135,14 @@ function TrialResultsByPrompt({ execution }: { execution: MonitoringExecutionDet
                           <ul className="trial-detail-list">
                             {runCitations.map((c, i) => (
                               <li key={i}>
-                                <strong>{c.cited_domain || '—'}</strong>
-                                {c.is_own_domain && <span className="trial-own-badge">own</span>}
+                                <span className={c.is_own_domain ? 'trial-cited-domain trial-cited-domain--own' : 'trial-cited-domain'}>
+                                  {c.cited_domain || '—'}
+                                </span>
+                                {c.is_own_domain && <span className="trial-own-badge">your site</span>}
                                 {c.raw_snippet && (
-                                  <blockquote className="trial-snippet">{c.raw_snippet}</blockquote>
+                                  <blockquote className="trial-snippet">
+                                    {c.raw_snippet}
+                                  </blockquote>
                                 )}
                               </li>
                             ))}
@@ -151,8 +155,14 @@ function TrialResultsByPrompt({ execution }: { execution: MonitoringExecutionDet
                           <ul className="trial-detail-list">
                             {runMentions.map((m, i) => (
                               <li key={i}>
-                                {m.mentioned || '—'}
-                                {m.is_own_domain ? <span className="trial-own-badge">own</span> : <span className="trial-comp-badge">competitor</span>}
+                                <span className={m.is_own_domain ? 'trial-mention trial-mention--own' : 'trial-mention trial-mention--competitor'}>
+                                  {m.mentioned || '—'}
+                                </span>
+                                {m.is_own_domain ? (
+                                  <span className="trial-own-badge">your brand</span>
+                                ) : (
+                                  <span className="trial-comp-badge">competitor</span>
+                                )}
                               </li>
                             ))}
                           </ul>

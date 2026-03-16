@@ -1674,9 +1674,26 @@ def get_monitoring_execution(execution_id: int, user_id: int = Depends(get_curre
         out["prompt_visibility"] = []
         if run_ids:
             placeholders = ",".join("?" * len(run_ids))
+            # brand_mentioned column in run_prompt_visibility may be stale for older runs; recompute it
+            # based on run_prompt_mentions (is_own_domain=1) so UI always reflects correct logic.
             vis_rows = conn.execute(
-                f"""SELECT v.prompt_id, v.run_id, v.had_own_citation, v.brand_mentioned, v.competitor_only,
-                           p.text AS prompt_text, p.niche AS prompt_niche
+                f"""SELECT
+                           v.prompt_id,
+                           v.run_id,
+                           v.had_own_citation,
+                           CASE
+                               WHEN EXISTS (
+                                   SELECT 1
+                                   FROM run_prompt_mentions m
+                                   WHERE m.run_id = v.run_id
+                                     AND m.prompt_id = v.prompt_id
+                                     AND m.is_own_domain = 1
+                               ) THEN 1
+                               ELSE 0
+                           END AS brand_mentioned_effective,
+                           v.competitor_only,
+                           p.text AS prompt_text,
+                           p.niche AS prompt_niche
                     FROM run_prompt_visibility v
                     JOIN prompts p ON p.id = v.prompt_id
                     WHERE v.run_id IN ({placeholders})
@@ -1697,7 +1714,7 @@ def get_monitoring_execution(execution_id: int, user_id: int = Depends(get_curre
                     "run_id": r["run_id"],
                     "model": run_id_to_model.get(r["run_id"], ""),
                     "had_own_citation": bool(r["had_own_citation"]),
-                    "brand_mentioned": bool(r["brand_mentioned"]),
+                    "brand_mentioned": bool(r["brand_mentioned_effective"]),
                     "competitor_only": bool(r["competitor_only"]),
                 })
             out["prompt_visibility"] = list(by_prompt.values())
@@ -2062,9 +2079,25 @@ def _execution_detail_by_id(conn, execution_id: int) -> dict | None:
     out["prompt_visibility"] = []
     if run_ids:
         placeholders = ",".join("?" * len(run_ids))
+        # Recompute brand_mentioned based on run_prompt_mentions (is_own_domain=1) for robustness.
         vis_rows = conn.execute(
-            f"""SELECT v.prompt_id, v.run_id, v.had_own_citation, v.brand_mentioned, v.competitor_only,
-                       p.text AS prompt_text, p.niche AS prompt_niche
+            f"""SELECT
+                       v.prompt_id,
+                       v.run_id,
+                       v.had_own_citation,
+                       CASE
+                           WHEN EXISTS (
+                               SELECT 1
+                               FROM run_prompt_mentions m
+                               WHERE m.run_id = v.run_id
+                                 AND m.prompt_id = v.prompt_id
+                                 AND m.is_own_domain = 1
+                           ) THEN 1
+                           ELSE 0
+                       END AS brand_mentioned_effective,
+                       v.competitor_only,
+                       p.text AS prompt_text,
+                       p.niche AS prompt_niche
                 FROM run_prompt_visibility v
                 JOIN prompts p ON p.id = v.prompt_id
                 WHERE v.run_id IN ({placeholders})
@@ -2085,7 +2118,7 @@ def _execution_detail_by_id(conn, execution_id: int) -> dict | None:
                 "run_id": r["run_id"],
                 "model": run_id_to_model.get(r["run_id"], ""),
                 "had_own_citation": bool(r["had_own_citation"]),
-                "brand_mentioned": bool(r["brand_mentioned"]),
+                "brand_mentioned": bool(r["brand_mentioned_effective"]),
                 "competitor_only": bool(r["competitor_only"]),
             })
         out["prompt_visibility"] = list(by_prompt.values())

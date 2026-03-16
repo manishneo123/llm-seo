@@ -300,8 +300,10 @@ def run(
 
         # run_prompt_visibility: had_own_citation, brand_mentioned, competitor_only
         had_own_citation = 1 if any(is_own for (_, _, _, _, is_own) in parsed if is_own) else 0
+        # Mentions can include both own brand/domains and competitors; we only want brand_mentioned=1
+        # when at least one mention is our own (is_own_domain=True).
         mentions_list = get_mentions_in_text(response or "", tracked_domains=tracked_domains)
-        brand_mentioned = 1 if mentions_list else 0
+        brand_mentioned = 1 if any(is_own for (_, is_own) in mentions_list) else 0
         substantive = len(parsed) > 0 or (len((response or "").strip()) >= 100)
         competitor_only = 1 if (had_own_citation == 0 and brand_mentioned == 0 and substantive) else 0
         conn.execute(
