@@ -33,7 +33,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY api/ api/
 COPY src/ src/
-COPY config/ config/
+# COPY config/ config/
 
 # Copy pre-built frontend assets into image
 COPY --from=frontend-build /app/frontend/dist ./frontend/dist
