@@ -1,11 +1,24 @@
 services:
-  llm-seo:
-    image: "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:latest"
+  llm-seo-backend:
+    image: "568298704755.dkr.ecr.ap-south-1.amazonaws.com/llmseo-backend:latest"
     restart: unless-stopped
     ports:
       - "8000:8000"
     env_file:
-      - .env
+      - .env.backend
     volumes:
       - ./data:/app/data
+    command:
+      - /bin/sh
+      - -lc
+      - |
+        python3 -m src.monitor.llm_task_queue >> /app/data/llm_task_queue.log 2>&1 &
+        exec uvicorn api.main:app --host 0.0.0.0 --port 8000
 
+    llm-seo-frontend:
+      image: "568298704755.dkr.ecr.ap-south-1.amazonaws.com/llmseo-frontend:latest"
+      restart: unless-stopped
+      depends_on:
+        - llm-seo-backend
+      ports:
+        - "8001:8001"

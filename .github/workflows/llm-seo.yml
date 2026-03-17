@@ -2,13 +2,30 @@ name: llm-seo-aws
 
 on:
   push:
+    branches:
+      - main
+      - master
     tags:
       - '*llmseo*'
+    paths:
+      - '.github/workflows/llm-seo.yml'
+      - '.dockerignore'
+      - 'Dockerfile.backend'
+      - 'Dockerfile.frontend'
+      - 'docker-compose.yml'
+      - 'requirements.txt'
+      - 'api/**'
+      - 'src/**'
+      - 'frontend/**'
+  workflow_dispatch:
+
 
 env:
   AWS_REGION: ap-south-1
-  ECR_REPOSITORY: llmseo    
-  SERVICE_NAME: llm-seo         # docker-compose service name (must match docker-compose.yml)
+  ECR_BACKEND_REPOSITORY: llmseo-backend
+  ECR_FRONTEND_REPOSITORY: llmseo-frontend
+  BACKEND_SERVICE_NAME: llm-seo-backend
+  FRONTEND_SERVICE_NAME: llm-seo-frontend
   REMOTE_COMPOSE_DIR: /opt/llm_evaluation_samples
   FORCE_COLOR: 3
 
@@ -31,13 +48,32 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build and push Docker image
+      - name: Write frontend production env
+        run: |
+          cat > frontend/.env.production <<'EOF'
+          ${{ secrets.FRONTEND_ENV_PROD }}
+          EOF
+
+      - name: Build and push backend image
         env:
           ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID_PROD_SANDBOX}}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
         run: |
-          IMAGE_URI=$ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:latest
+          IMAGE_URI=$ECR_REGISTRY/${{ env.ECR_BACKEND_REPOSITORY }}:latest
 
-          docker build -f Dockerfile \
+          docker build -f Dockerfile.backend \
+            -t "$IMAGE_URI" .
+
+          docker push "$IMAGE_URI"
+
+          echo "image_uri=$IMAGE_URI" >> $GITHUB_OUTPUT
+
+      - name: Build and push frontend image
+        env:
+          ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID_PROD_SANDBOX}}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+        run: |
+          IMAGE_URI=$ECR_REGISTRY/${{ env.ECR_FRONTEND_REPOSITORY }}:latest
+
+          docker build -f Dockerfile.frontend \
             -t "$IMAGE_URI" .
 
           docker push "$IMAGE_URI"
@@ -55,13 +91,19 @@ jobs:
 
             export AWS_REGION=${{ env.AWS_REGION }}
             export AWS_ACCOUNT_ID=${{ secrets.AWS_ACCOUNT_ID_PROD_SANDBOX }}
+            export ECR_BACKEND_REPOSITORY=${{ env.ECR_BACKEND_REPOSITORY }}
+            export ECR_FRONTEND_REPOSITORY=${{ env.ECR_FRONTEND_REPOSITORY }}
 
             cd ${{ env.REMOTE_COMPOSE_DIR }}
+
+            cat > .env.backend <<'EOF'
+            ${{ secrets.BACKEND_ENV_PROD }}
+            EOF
 
             aws ecr get-login-password --region "$AWS_REGION" \
               | docker login \
                 --username AWS \
                 --password-stdin "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
 
-            docker compose pull ${{ env.SERVICE_NAME }}
-            docker compose up -d ${{ env.SERVICE_NAME }}
+            docker compose pull ${{ env.BACKEND_SERVICE_NAME }} ${{ env.FRONTEND_SERVICE_NAME }}
+            docker compose up -d ${{ env.BACKEND_SERVICE_NAME }} ${{ env.FRONTEND_SERVICE_NAME }}
