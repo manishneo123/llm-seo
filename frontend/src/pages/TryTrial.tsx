@@ -434,6 +434,7 @@ export function TryTrial() {
   const [lastTrialSlug, setLastTrialSlug] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const turnstileContainerRef = useRef<HTMLDivElement | null>(null);
+  const turnstileWidgetIdRef = useRef<string | null>(null);
   const pollFailuresRef = useRef(0);
 
   const isDone = execution && (execution.status === 'finished' || execution.status === 'failed');
@@ -508,7 +509,13 @@ export function TryTrial() {
     const el = turnstileContainerRef.current;
     if (!el) return;
 
-    const win = window as unknown as { turnstile?: { render: (el: HTMLElement, opts: { sitekey: string; callback: (token: string) => void }) => string; reset?: (id: string) => void } };
+    const win = window as unknown as {
+      turnstile?: {
+        render: (el: HTMLElement, opts: { sitekey: string; callback: (token: string) => void }) => string;
+        getResponse: (widgetId: string) => string;
+        reset?: (id: string) => void;
+      };
+    };
     let widgetId: string | null = null;
 
     function doRender(): void {
@@ -517,7 +524,8 @@ export function TryTrial() {
         sitekey: TURNSTILE_SITE_KEY as string,
         callback: (token: string) => setTurnstileToken(token),
       });
-      widgetId = rawId === undefined || rawId === null ? null : rawId;
+      widgetId = rawId === undefined || rawId === null ? null : String(rawId);
+      if (widgetId) turnstileWidgetIdRef.current = widgetId;
     }
 
     doRender();
@@ -530,6 +538,7 @@ export function TryTrial() {
         } catch {
           /* ignore */
         }
+        turnstileWidgetIdRef.current = null;
       };
     }
 
@@ -539,6 +548,7 @@ export function TryTrial() {
       } catch {
         /* ignore */
       }
+      turnstileWidgetIdRef.current = null;
     };
   }, [turnstileReady, slugParam]);
 
@@ -600,8 +610,24 @@ export function TryTrial() {
     const value = website.trim();
     if (!value) return;
     setError(null);
+
+    // Resolve CAPTCHA token: state or widget getResponse (in case callback ran but state was stale)
+    let captchaToken: string | undefined = turnstileToken ?? undefined;
+    if (TURNSTILE_SITE_KEY && !captchaToken) {
+      const win = window as unknown as { turnstile?: { getResponse: (id: string) => string } };
+      const widgetId = turnstileWidgetIdRef.current;
+      if (widgetId && win.turnstile?.getResponse) {
+        const fromWidget = win.turnstile.getResponse(widgetId);
+        if (fromWidget) captchaToken = fromWidget;
+      }
+    }
+    if (TURNSTILE_SITE_KEY && !captchaToken) {
+      setError('Please complete the CAPTCHA challenge below and try again.');
+      return;
+    }
+
     setSubmitting(true);
-    runTrial(value, turnstileToken ?? undefined, false)
+    runTrial(value, captchaToken, false)
       .then((res) => {
         if (!res || !res.token) {
           throw new Error('Trial did not return a session token. Please try again.');
