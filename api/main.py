@@ -1864,41 +1864,8 @@ def _trial_queue_backpressure(conn) -> None:
 
 
 def _verify_turnstile(token: str | None, remote_ip: str | None) -> None:
-    """Verify Cloudflare Turnstile token. Raise HTTPException 400 if secret is set but token invalid."""
-    if (os.environ.get("TURNSTILE_ENABLED") or "").lower() in ("0", "false", "no"):
-        return  # Turnstile disabled via env
-    secret = (os.environ.get("TURNSTILE_SECRET_KEY") or "").strip()
-    if not secret:
-        return
-    if not (token and (token.strip())):
-        raise HTTPException(
-            status_code=400,
-            detail="CAPTCHA verification is required. Please complete the challenge and try again.",
-        )
-    try:
-        import httpx
-        with httpx.Client(timeout=10.0) as client:
-            resp = client.post(
-                "https://challenges.cloudflare.com/turnstile/v0/siteverify",
-                data={
-                    "secret": secret,
-                    "response": token.strip(),
-                    **({"remoteip": remote_ip} if remote_ip else {}),
-                },
-            )
-            data = resp.json()
-        if not data.get("success"):
-            raise HTTPException(
-                status_code=400,
-                detail="CAPTCHA verification failed. Please try again.",
-            )
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=400,
-            detail="CAPTCHA verification failed. Please try again.",
-        ) from e
+    """Turnstile verification temporarily disabled."""
+    return
 
 
 def _domain_to_slug(domain: str) -> str:
