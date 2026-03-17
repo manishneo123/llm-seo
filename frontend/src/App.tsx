@@ -168,7 +168,7 @@ function AppFooter() {
       <div className="app-footer-inner">
         <span className="app-footer-copy">© {new Date().getFullYear()} TRUSEO</span>
         <nav className="app-footer-links">
-          <Link to="/trial-directory">Trial directory</Link>
+          <Link to="/trial-directory">Website directory</Link>
           <Link to="/terms">Terms &amp; conditions</Link>
         </nav>
       </div>

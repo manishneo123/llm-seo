@@ -42,7 +42,7 @@ export function TrialDirectory() {
   return (
     <div className="page dashboard">
       <header className="page-header">
-        <h1 className="page-title">Trial directory</h1>
+        <h1 className="page-title">Website directory</h1>
         <p className="page-description">
           Browse domains that have been analyzed via the public trial. Click a row to open the full trial results.
         </p>
