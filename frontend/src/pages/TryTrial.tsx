@@ -17,7 +17,9 @@ import { CheckCircle2, Sparkles, AlertTriangle, Circle } from 'lucide-react';
 
 const TRIAL_TOKEN_KEY = 'llm_seo_trial_token';
 const POLL_INTERVAL_MS = 2500;
-const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined;
+// Set to true to enable Cloudflare Turnstile CAPTCHA on the trial form.
+const TURNSTILE_ENABLED = false;
+const TURNSTILE_SITE_KEY = TURNSTILE_ENABLED ? (import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined) : undefined;
 
 const MAX_RESPONSE_PREVIEW = 400;
 
