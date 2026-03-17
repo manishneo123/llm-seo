@@ -86,9 +86,12 @@ jobs:
 
             cd ${{ env.REMOTE_COMPOSE_DIR }}
 
-            cat > .env.backend <<'EOF'
+            cat > /tmp/llmseo.env.backend <<'EOF'
             ${{ secrets.BACKEND_ENV_PROD }}
             EOF
+            sudo install -m 600 /tmp/llmseo.env.backend .env.backend
+            sudo chown "$(id -u)":"$(id -g)" .env.backend
+            rm -f /tmp/llmseo.env.backend
 
             aws ecr get-login-password --region "$AWS_REGION" \
               | docker login \

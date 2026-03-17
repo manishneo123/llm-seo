@@ -11,6 +11,8 @@ frontend/dist/
 
 # Environment and secrets
 .env
+.env.backend
+frontend/.env.production
 
 # Editor / OS
 .DS_Store
@@ -19,4 +21,3 @@ frontend/dist/
 
 # Docker
 *.log
-
