@@ -7,17 +7,7 @@ on:
       - master
     tags:
       - '*llmseo*'
-    paths:
-      - '.github/workflows/llm-seo.yml'
-      - '.dockerignore'
-      - 'Dockerfile.backend'
-      - 'Dockerfile.frontend'
-      - 'docker-compose.yml'
-      - 'requirements.txt'
-      - 'api/**'
-      - 'src/**'
-      - 'frontend/**'
-  workflow_dispatch:
+
 
 
 env:
