@@ -1734,12 +1734,8 @@ TRIAL_USER_EMAIL = "trial@llmseo.internal"
 
 
 def _trial_prompts_count() -> int:
-    """Number of prompts to generate and run per trial. From TRIAL_PROMPTS_COUNT (default 5)."""
-    try:
-        n = int(os.environ.get("TRIAL_PROMPTS_COUNT", "5").strip())
-        return max(1, min(20, n))
-    except (TypeError, ValueError):
-        return 5
+    """Number of prompts to generate and run per trial. Code default for now; env ignored."""
+    return 5
 
 
 def _trial_delay_seconds() -> float:
