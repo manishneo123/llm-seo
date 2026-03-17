@@ -1866,7 +1866,7 @@ def _trial_queue_backpressure(conn) -> None:
 def _verify_turnstile(token: str | None, remote_ip: str | None) -> None:
     """Verify Cloudflare Turnstile token. Raise HTTPException 400 if secret is set but token invalid."""
     if (os.environ.get("TURNSTILE_ENABLED") or "").lower() in ("0", "false", "no"):
-        return  # Turnstile disabled
+        return  # Turnstile disabled via env
     secret = (os.environ.get("TURNSTILE_SECRET_KEY") or "").strip()
     if not secret:
         return

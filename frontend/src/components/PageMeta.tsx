@@ -27,7 +27,7 @@ const PATH_META: Record<string, MetaEntry> = {
       'Learn how TRUSEO discovers your domain, generates prompts, monitors LLM answers for citations and brand mentions, and turns gaps into content briefs in an agentic loop.',
   },
   '/trial-directory': {
-    title: `Trial directory — ${SITE_NAME}`,
+    title: `Website directory — ${SITE_NAME}`,
     description: 'Browse domains that have been analyzed in free trials. View results and visibility across LLMs.',
   },
   '/signin': {
