@@ -145,7 +145,7 @@ function AppHeader() {
             </button>
             <div className="app-header-dropdown-menu">
               <NavLink to="/how-it-works" className={({ isActive }) => isActive ? 'active' : ''}>How it works</NavLink>
-              <NavLink to="/trial-directory" className={({ isActive }) => isActive ? 'active' : ''}>Trial directory</NavLink>
+              <NavLink to="/trial-directory" className={({ isActive }) => isActive ? 'active' : ''}>Website directory</NavLink>
               <NavLink to="/content-sources" className={({ isActive }) => isActive ? 'active' : ''}>Content sources</NavLink>
               <NavLink to="/prompt-generation" className={({ isActive }) => isActive ? 'active' : ''}>Prompt generation</NavLink>
               <NavLink to="/monitoring" className={({ isActive }) => isActive ? 'active' : ''}>Monitoring</NavLink>

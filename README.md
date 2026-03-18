@@ -34,7 +34,7 @@ cp .env.example .env
 cd frontend && npm install && cd ..
 ```
 
-**Environment (`.env`):** See `.env.example`. Key variables: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `PERPLEXITY_API_KEY`, `GOOGLE_API_KEY` (Gemini), `TRACKED_DOMAINS`, `JWT_SECRET` (required for auth). Optional: `TRIAL_PROMPTS_COUNT` (default 5), `TRIAL_DELAY_SECONDS` (default 3.5) for the trial flow.
+**Environment (`.env`):** See `.env.example`. Key variables: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `PERPLEXITY_API_KEY`, `GOOGLE_API_KEY` (Gemini), `TRACKED_DOMAINS`, `JWT_SECRET` (required for auth). Optional: `TRIAL_PROMPTS_COUNT` (default 5), `TRIAL_DELAY_SECONDS` (default 5) for the trial flow.
 
 ## Run
 
@@ -90,7 +90,7 @@ export PYTHONPATH=.
 python3 -m src.monitor.llm_task_queue
 ```
 
-Optional: `--once` to process a single task and exit; `--delay 3.5` to set the delay between tasks (default: `QUEUE_DELAY_SECONDS` or `TRIAL_DELAY_SECONDS` from `.env`, or 3.5). Keep this process running (e.g. in a separate terminal or as a systemd service) whenever the API is used for monitoring or trials.
+Optional: `--once` to process a single task and exit; `--delay 5` to set the delay between tasks (default: `QUEUE_DELAY_SECONDS` or `TRIAL_DELAY_SECONDS` from `.env`, or 5). Keep this process running (e.g. in a separate terminal or as a systemd service) whenever the API is used for monitoring or trials.
 
 **Runs stuck ("Runs in progress" never finishes)?** Monitoring and trial runs enqueue LLM tasks; a **worker must be running** to process them. Check the queue:
 

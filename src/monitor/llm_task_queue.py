@@ -38,11 +38,11 @@ TASK_TYPE_MONITOR_CALL = "monitor_call"
 
 def get_queue_delay_seconds() -> float:
     """Delay between processing consecutive queue tasks (env QUEUE_DELAY_SECONDS or TRIAL_DELAY_SECONDS)."""
-    v = os.environ.get("QUEUE_DELAY_SECONDS") or os.environ.get("TRIAL_DELAY_SECONDS", "3.5")
+    v = os.environ.get("QUEUE_DELAY_SECONDS") or os.environ.get("TRIAL_DELAY_SECONDS", "5")
     try:
         return max(0.0, float(v))
     except (TypeError, ValueError):
-        return 3.5
+        return 5.0
 
 
 def enqueue_monitor_tasks(
@@ -311,7 +311,7 @@ if __name__ == "__main__":
     )
     p = argparse.ArgumentParser(description="LLM task queue worker: process monitor_call tasks with delay.")
     p.add_argument("--once", action="store_true", help="Process one task and exit")
-    p.add_argument("--delay", type=float, default=None, help="Seconds between tasks (default: QUEUE_DELAY_SECONDS or 3.5)")
+    p.add_argument("--delay", type=float, default=None, help="Seconds between tasks (default: QUEUE_DELAY_SECONDS or 5)")
     p.add_argument("--status", action="store_true", help="Print queue status (pending/done/failed) and exit")
     p.add_argument("--execution-id", type=int, default=None, help="With --status: filter by execution ID")
     args = p.parse_args()

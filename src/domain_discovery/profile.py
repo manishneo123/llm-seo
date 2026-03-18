@@ -24,6 +24,22 @@ Website content:
 ---
 JSON:"""
 
+PROFILE_URL_PROMPT = """Analyze the website {url} and extract a structured profile for TRUSEO (generating search prompts that could lead to citing this site).
+
+Use web search / browsing to understand the site. Prefer the official website pages (homepage, product, docs, pricing, about) over third-party summaries.
+
+Output valid JSON only, with these exact keys:
+- "domain": the domain name (e.g. example.com)
+- "category": the single best broad category (e.g. "Blockchain compliance", "AI dev tools")
+- "categories": array of exactly 3 possible broad categories, ordered by relevance (first is best fit). Use short, consistent labels (e.g. "SaaS", "Developer tools", "API platform")
+- "niche": short niche label (e.g. "Crypto KYC", "ML ops")
+- "value_proposition": 1-2 sentences describing what the product/service offers
+- "key_topics": array of 5-10 key topics or product areas (strings)
+- "target_audience": short description of who the product is for
+- "competitors": array of 5-15 main competitors: brand names and/or domain names (e.g. "Chainlink", "competitor.com"). Only include direct competitors in the same space.
+
+JSON:"""
+
 
 def _extract_json(text: str) -> dict:
     text = text.strip()
@@ -33,6 +49,29 @@ def _extract_json(text: str) -> dict:
         text = text.split("```")[1].split("```")[0].strip()
     return json.loads(text)
 
+def _extract_openai_text(message) -> str:
+    """Extract text from OpenAI message.content (string or list of parts). Ignore URL citations/annotations."""
+    content = getattr(message, "content", None)
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content.strip()
+    parts: list[str] = []
+    if isinstance(content, list):
+        for part in content:
+            if isinstance(part, str):
+                if part.strip():
+                    parts.append(part.strip())
+            elif isinstance(part, dict):
+                t = (part.get("text") or "").strip()
+                if t:
+                    parts.append(t)
+            else:
+                t = (getattr(part, "text", None) or "").strip()
+                if t:
+                    parts.append(t)
+    return "\n".join(parts).strip()
+
 
 def extract_profile_with_openai(domain: str, crawled_text: str, api_key: str | None = None) -> dict:
     api_key = (api_key or os.environ.get("OPENAI_API_KEY") or "").strip()
@@ -40,14 +79,39 @@ def extract_profile_with_openai(domain: str, crawled_text: str, api_key: str | N
         return _default_profile(domain)
     from openai import OpenAI
     client = OpenAI(api_key=api_key)
-    content = PROFILE_PROMPT.format(crawled_text=crawled_text[:15000])
+
+    use_web_search = os.environ.get("OPENAI_USE_WEB_SEARCH", "").strip().lower() in ("1", "true", "yes")
+    if use_web_search:
+        # Use OpenAI search model + web_search_options so we don't have to send large crawled text.
+        # Important: extract only the model's text (ignore url_citation annotations) so JSON parsing stays valid.
+        try:
+            url = f"https://{domain}"
+            prompt = PROFILE_URL_PROMPT.format(url=url)
+            model = os.environ.get("OPENAI_SEARCH_MODEL", "gpt-4o-mini-search-preview").strip() or "gpt-4o-mini-search-preview"
+            r = client.chat.completions.create(
+                model=model,
+                max_completion_tokens=1024,
+                web_search_options={"search_context_size": "medium"},
+                messages=[{"role": "user", "content": prompt}],
+            )
+            raw = _extract_openai_text(r.choices[0].message if r.choices else None)
+            data = _extract_json(raw)
+            data["domain"] = domain
+            data["competitors"] = list(data.get("competitors") or [])
+            data["categories"] = _normalize_categories(data.get("categories"), data.get("category"))
+            return data
+        except Exception:
+            # Fall back to crawl-text extraction below (more deterministic) if search output can't be parsed.
+            pass
+
+    content = PROFILE_PROMPT.format(crawled_text=(crawled_text or "")[:15000])
     model = os.environ.get("OPENAI_MODEL", "gpt-5.4").strip() or "gpt-5.4"
     r = client.chat.completions.create(
         model=model,
         max_completion_tokens=1024,
         messages=[{"role": "user", "content": content}],
     )
-    raw = (r.choices[0].message.content or "").strip()
+    raw = _extract_openai_text(r.choices[0].message if r.choices else None)
     try:
         data = _extract_json(raw)
         data["domain"] = domain

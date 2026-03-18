@@ -1739,12 +1739,12 @@ def _trial_prompts_count() -> int:
 
 
 def _trial_delay_seconds() -> float:
-    """Delay in seconds between LLM calls during trial monitoring. From TRIAL_DELAY_SECONDS (default 3.5)."""
+    """Delay in seconds between LLM calls during trial monitoring. From TRIAL_DELAY_SECONDS (default 5)."""
     try:
-        n = float(os.environ.get("TRIAL_DELAY_SECONDS", "3.5").strip())
+        n = float(os.environ.get("TRIAL_DELAY_SECONDS", "5").strip())
         return max(0.5, min(30.0, n))
     except (TypeError, ValueError):
-        return 3.5
+        return 5.0
 
 
 def _get_client_ip(request: Request) -> str:
