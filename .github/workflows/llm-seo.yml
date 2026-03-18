@@ -93,10 +93,26 @@ jobs:
             sudo chown "$(id -u)":"$(id -g)" .env.backend
             rm -f /tmp/llmseo.env.backend
 
+            project_name="${COMPOSE_PROJECT_NAME:-$(basename "$PWD")}"
+
+            cleanup_stale_recreated_container() {
+              service_name="$1"
+              canonical_name="${project_name}-${service_name}-1"
+              stale_ids="$(docker ps -aq --format '{{.ID}} {{.Names}}' | awk -v canonical="$canonical_name" '$2 ~ ("_" canonical "$") { print $1 }')"
+
+              if [ -n "$stale_ids" ]; then
+                docker rm -f $stale_ids
+              fi
+            }
+
+            cleanup_stale_recreated_container ${{ env.BACKEND_SERVICE_NAME }}
+            cleanup_stale_recreated_container ${{ env.FRONTEND_SERVICE_NAME }}
+
             aws ecr get-login-password --region "$AWS_REGION" \
               | docker login \
                 --username AWS \
                 --password-stdin "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
 
+            docker compose config -q
             docker compose pull ${{ env.BACKEND_SERVICE_NAME }} ${{ env.FRONTEND_SERVICE_NAME }}
-            docker compose up -d ${{ env.BACKEND_SERVICE_NAME }} ${{ env.FRONTEND_SERVICE_NAME }}
+            docker compose up -d --remove-orphans ${{ env.BACKEND_SERVICE_NAME }} ${{ env.FRONTEND_SERVICE_NAME }}
