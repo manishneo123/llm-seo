@@ -2025,6 +2025,60 @@ def _reconcile_execution_if_done(conn, execution_id: int) -> None:
         pass
 
 
+def _execution_queue_eta(conn, execution_id: int) -> dict:
+    """
+    Estimate remaining time for an execution based on llm_task_queue progress.
+    Returns queue counts plus eta_seconds (rough) and avg_task_seconds.
+    """
+    try:
+        from src.monitor.llm_task_queue import get_queue_status, get_queue_delay_seconds
+        init_db(conn)
+        qs = get_queue_status(conn, execution_id=execution_id)
+        pending = int(qs.get("pending", 0) or 0)
+        running = int(qs.get("running", 0) or 0)
+        done = int(qs.get("done", 0) or 0)
+        failed = int(qs.get("failed", 0) or 0)
+        total = pending + running + done + failed
+        delay = float(get_queue_delay_seconds() or 0.0)
+    except Exception:
+        pending = running = done = failed = total = 0
+        delay = 0.0
+
+    # Average duration from completed tasks for this execution (in seconds)
+    avg_task = None
+    try:
+        row = conn.execute(
+            """SELECT AVG((julianday(finished_at) - julianday(started_at)) * 86400.0) AS avg_s
+               FROM llm_task_queue
+               WHERE execution_id = ?
+                 AND status = 'done'
+                 AND started_at IS NOT NULL
+                 AND finished_at IS NOT NULL""",
+            (execution_id,),
+        ).fetchone()
+        if row and row["avg_s"] is not None:
+            v = float(row["avg_s"])
+            if 0.1 <= v <= 300.0:
+                avg_task = v
+    except Exception:
+        avg_task = None
+
+    # Fallback: assume ~8s model time per task if we don't have history yet.
+    avg_task_seconds = float(avg_task if avg_task is not None else 8.0)
+    remaining = pending + running
+    eta_seconds = max(0.0, remaining * (avg_task_seconds + max(0.0, delay)))
+    return {
+        "pending": pending,
+        "running": running,
+        "done": done,
+        "failed": failed,
+        "total": total,
+        "delay_seconds": delay,
+        "avg_task_seconds": avg_task_seconds,
+        "eta_seconds": eta_seconds,
+    }
+
+
 def _execution_detail_by_id(conn, execution_id: int) -> dict | None:
     """Return execution detail (same shape as get_monitoring_execution) by execution_id, no user check."""
     row = conn.execute(
@@ -2137,6 +2191,42 @@ def _execution_detail_by_id(conn, execution_id: int) -> dict | None:
     discovery = _get_trial_discovery(conn, execution_id)
     if discovery is not None:
         out["discovery"] = discovery
+    # Queue/ETA info (useful for trials/monitoring progress UI)
+    try:
+        out["queue"] = _execution_queue_eta(conn, execution_id)
+    except Exception:
+        out["queue"] = None
+    return out
+
+
+def _execution_progress_by_id(conn, execution_id: int) -> dict | None:
+    """Lightweight execution payload for polling (no citations/mentions/responses/visibility)."""
+    row = conn.execute(
+        """SELECT id, started_at, finished_at, trigger_type, status, settings_snapshot
+           FROM monitoring_executions WHERE id = ?""",
+        (execution_id,),
+    ).fetchone()
+    if not row:
+        return None
+    out = dict(row)
+    if out.get("settings_snapshot"):
+        try:
+            out["settings_snapshot"] = json.loads(out["settings_snapshot"])
+        except (TypeError, ValueError):
+            out["settings_snapshot"] = None
+    runs = conn.execute(
+        """SELECT id, execution_id, model, started_at, finished_at, prompt_count, status
+           FROM runs WHERE execution_id = ? ORDER BY model""",
+        (execution_id,),
+    ).fetchall()
+    out["runs"] = [dict(r) for r in runs]
+    discovery = _get_trial_discovery(conn, execution_id)
+    if discovery is not None:
+        out["discovery"] = discovery
+    try:
+        out["queue"] = _execution_queue_eta(conn, execution_id)
+    except Exception:
+        out["queue"] = None
     return out
 
 
@@ -2603,8 +2693,11 @@ def queue_status(
 
 
 @app.get("/api/trial/status")
-def trial_status(token: str = Query(..., alias="token")):
-    """Get trial execution status by token. No auth. Returns same shape as GET /api/monitoring/executions/{id}."""
+def trial_status(
+    token: str = Query(..., alias="token"),
+    lite: bool = Query(False, description="If true, return lightweight polling payload while running"),
+):
+    """Get trial execution status by token. No auth. Supports lite polling to avoid large payloads."""
     conn = get_connection()
     try:
         row = conn.execute(
@@ -2616,7 +2709,18 @@ def trial_status(token: str = Query(..., alias="token")):
             raise HTTPException(status_code=404, detail="Trial session not found")
         execution_id = row["execution_id"]
         _reconcile_execution_if_done(conn, execution_id)
-        out = _execution_detail_by_id(conn, execution_id)
+        if lite:
+            exec_row = conn.execute(
+                "SELECT status FROM monitoring_executions WHERE id = ?",
+                (execution_id,),
+            ).fetchone()
+            status = ((exec_row["status"] if exec_row else "") or "").lower()
+            if status == "running":
+                out = _execution_progress_by_id(conn, execution_id)
+            else:
+                out = _execution_detail_by_id(conn, execution_id)
+        else:
+            out = _execution_detail_by_id(conn, execution_id)
         if not out:
             logger.warning("trial_status_execution_not_found execution_id=%s", execution_id)
             raise HTTPException(status_code=404, detail="Execution not found")

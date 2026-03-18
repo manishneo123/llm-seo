@@ -3,6 +3,7 @@ import { Link, useParams, useNavigate } from 'react-router-dom';
 import {
   runTrial,
   getTrialStatus,
+  getTrialStatusLite,
   getTrialBySlug,
   getTrialDirectory,
   type MonitoringExecutionDetail,
@@ -419,6 +420,17 @@ function ResultsView({
   );
 }
 
+function formatEta(seconds?: number | null): string | null {
+  if (seconds == null || !Number.isFinite(seconds) || seconds <= 0) return null;
+  const s = Math.max(0, Math.round(seconds));
+  const m = Math.round(s / 60);
+  if (m <= 1) return 'about 1 min';
+  if (m < 60) return `about ${m} min`;
+  const h = Math.floor(m / 60);
+  const mm = m % 60;
+  return `about ${h}h ${mm}m`;
+}
+
 export function TryTrial() {
   const { slug: slugParam } = useParams<{ slug: string }>();
   const navigate = useNavigate();
@@ -485,7 +497,7 @@ export function TryTrial() {
   // Directory for /try (no slug)
   useEffect(() => {
     if (slugParam) return;
-    getTrialDirectory({ limit: 20, offset: 0 })
+    getTrialDirectory({ limit: 10, offset: 0 })
       .then((res) => setDirectory(res.trials || []))
       .catch(() => setDirectory([]));
   }, [slugParam]);
@@ -560,12 +572,17 @@ export function TryTrial() {
     pollFailuresRef.current = 0;
     setStatusError(null);
     function poll() {
-      getTrialStatus(token!)
-        .then((data) => {
+      // Use lightweight polling payload while running to avoid large responses causing network/proxy drops in prod.
+      getTrialStatusLite(token!)
+        .then((data: MonitoringExecutionDetail) => {
           pollFailuresRef.current = 0;
           setExecution(data);
           setStatusError(null);
           if (data.status === 'finished' || data.status === 'failed') {
+            // Fetch full detail once complete
+            getTrialStatus(token!)
+              .then((full) => setExecution(full))
+              .catch(() => {});
             if (pollRef.current) {
               clearInterval(pollRef.current);
               pollRef.current = null;
@@ -578,10 +595,7 @@ export function TryTrial() {
             setStatusError(
               'Unable to load status. The analysis may still be running—check back in a few minutes, or run a new trial below.'
             );
-            if (pollRef.current) {
-              clearInterval(pollRef.current);
-              pollRef.current = null;
-            }
+            // Keep polling; transient network failures are common in production while work continues.
           }
         });
     }
@@ -801,6 +815,8 @@ export function TryTrial() {
 
   if (!isDone) {
     const discovery = execution.discovery;
+    const q = execution.queue;
+    const etaText = formatEta(q?.eta_seconds);
     return (
       <div className="page dashboard try-results-page">
         <header className="page-header">
@@ -808,6 +824,12 @@ export function TryTrial() {
           <p className="page-description">We&apos;re querying each model with your prompts. This may take a few minutes.</p>
           <div className="trial-results-meta">
             <StatusBadge status={execution.status} />
+            {q && (q.total || 0) > 0 && (
+              <span className="trial-progress-meta">
+                {typeof q.done === 'number' ? `${q.done}/${q.total} tasks` : null}
+                {etaText ? ` · ETA ${etaText}` : ''}
+              </span>
+            )}
           </div>
         </header>
         {discovery && (

@@ -2322,6 +2322,13 @@
   margin-top: var(--space-sm);
 }
 
+.trial-progress-meta {
+  display: inline-block;
+  margin-left: var(--space-sm);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
 .trial-results-card {
   margin-bottom: var(--space-2xl);
 }

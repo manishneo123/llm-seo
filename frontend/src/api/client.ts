@@ -869,6 +869,16 @@ export interface MonitoringExecutionDetail extends MonitoringExecution {
   citations?: TrialCitation[];
   mentions?: TrialMention[];
   prompt_responses?: TrialPromptResponse[];
+  queue?: {
+    pending: number;
+    running: number;
+    done: number;
+    failed: number;
+    total: number;
+    delay_seconds?: number;
+    avg_task_seconds?: number;
+    eta_seconds?: number;
+  } | null;
 }
 
 export async function getMonitoringExecutions(limit = 20, offset = 0): Promise<{ executions: MonitoringExecution[]; total: number }> {
@@ -949,6 +959,14 @@ export async function runTrial(
 
 export async function getTrialStatus(token: string): Promise<MonitoringExecutionDetail> {
   const url = `${API_BASE}/api/trial/status?token=${encodeURIComponent(token)}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(res.status === 404 ? 'Trial session not found' : 'Failed to fetch status');
+  ensureJsonResponse(res, url);
+  return res.json();
+}
+
+export async function getTrialStatusLite(token: string): Promise<MonitoringExecutionDetail> {
+  const url = `${API_BASE}/api/trial/status?token=${encodeURIComponent(token)}&lite=1`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(res.status === 404 ? 'Trial session not found' : 'Failed to fetch status');
   ensureJsonResponse(res, url);
