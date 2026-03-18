@@ -90,7 +90,9 @@ function getMetaForPath(pathname: string): MetaEntry {
   if (exact) return exact;
 
   if (pathname.startsWith('/try/') && pathname.length > 5) {
-    const slug = pathname.slice(5).replace(/-/g, '.');
+    // Keep slug as-is for accuracy. (Some real domains contain hyphens; we can't reliably
+    // distinguish hyphens-from-dots in the canonical slug without fetching discovery data.)
+    const slug = pathname.slice(5);
     return {
       title: `Trial results: ${slug} — ${SITE_NAME}`,
       description: `View trial analysis and LLM visibility for ${slug}. Domain discovery, prompts, and citation results across models.`,
@@ -150,6 +152,16 @@ function setMetaTag(
   el.setAttribute('content', value);
 }
 
+function setLinkTag(rel: string, href: string): void {
+  let el = document.querySelector(`link[rel="${rel}"]`) as HTMLLinkElement | null;
+  if (!el) {
+    el = document.createElement('link');
+    el.setAttribute('rel', rel);
+    document.head.appendChild(el);
+  }
+  el.setAttribute('href', href);
+}
+
 export function PageMeta() {
   const { pathname } = useLocation();
   const { title, description } = getMetaForPath(pathname);
@@ -163,6 +175,7 @@ export function PageMeta() {
     setMetaTag('property', 'og:site_name', SITE_NAME);
     if (typeof window !== 'undefined' && window.location.href) {
       setMetaTag('property', 'og:url', window.location.href);
+      setLinkTag('canonical', window.location.href);
     }
     setMetaTag('name', 'twitter:card', 'summary_large_image');
     setMetaTag('name', 'twitter:title', title);

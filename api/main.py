@@ -18,6 +18,9 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 import openlit
+# Initialize OpenLIT observability for the API process.
+# Uses OTEL_* environment variables (OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_EXPORTER_OTLP_HEADERS, OTEL_SERVICE_NAME, etc.).
+openlit.init()
 
 from fastapi import FastAPI, HTTPException, Body, Query, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -49,9 +52,7 @@ if not logger.handlers:
         format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
     )
 
-# Initialize OpenLIT observability for the API process.
-# Uses OTEL_* environment variables (OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_EXPORTER_OTLP_HEADERS, OTEL_SERVICE_NAME, etc.).
-openlit.init()
+
 
 
 def _rewrite_image_urls_in_markdown(body_md: str) -> str:
@@ -2678,65 +2679,76 @@ def trial_directory(
         where_clauses = ["e.status = 'finished'"]
         if q:
             q_like = f"%{q.lower().strip()}%"
-            where_clauses.append("(LOWER(t.website) LIKE ? OR LOWER(t.slug) LIKE ?)")
-            params.extend([q_like, q_like])
+            where_clauses.append(
+                "("
+                "LOWER(t.website) LIKE ? OR "
+                "LOWER(t.slug) LIKE ? OR "
+                "COALESCE(LOWER(dp.category), '') LIKE ? OR "
+                "COALESCE(LOWER(dp.categories), '') LIKE ?"
+                ")"
+            )
+            params.extend([q_like, q_like, q_like, q_like])
 
+        if category:
+            c_like = f"%{category.lower().strip()}%"
+            where_clauses.append(
+                "(COALESCE(LOWER(dp.category), '') LIKE ? OR COALESCE(LOWER(dp.categories), '') LIKE ?)"
+            )
+            params.extend([c_like, c_like])
+
+        # Join discovery via domains/domain_profiles so category filtering can happen before pagination.
+        # Restrict domain join to the shared trial user to avoid collisions with logged-in users' domains.
         base_sql = f"""
-            SELECT t.slug, t.website, MAX(e.finished_at) AS finished_at
+            SELECT
+              t.slug,
+              t.website,
+              MAX(e.finished_at) AS finished_at,
+              dp.category AS category,
+              dp.categories AS categories_json
             FROM trial_sessions t
             JOIN monitoring_executions e ON e.id = t.execution_id
+            LEFT JOIN domains d
+              ON d.domain = t.website
+             AND d.user_id = (SELECT id FROM users WHERE email = ? LIMIT 1)
+            LEFT JOIN domain_profiles dp ON dp.domain_id = d.id
             WHERE {' AND '.join(where_clauses)}
-            GROUP BY t.slug
+            GROUP BY t.slug, t.website, dp.category, dp.categories
         """
 
-        # Total count (before pagination, before category filter)
-        count_sql = f"SELECT COUNT(*) AS n FROM ({base_sql}) sub"
-        total_row = conn.execute(count_sql, params).fetchone()
-        total_base = int(total_row["n"] if total_row and total_row["n"] is not None else 0)
+        params_with_trial_user = [TRIAL_USER_EMAIL, *params]
 
-        base_rows = conn.execute(
+        # Total count (before pagination; includes category filter)
+        count_sql = f"SELECT COUNT(*) AS n FROM ({base_sql}) sub"
+        total_row = conn.execute(count_sql, params_with_trial_user).fetchone()
+        total = int(total_row["n"] if total_row and total_row["n"] is not None else 0)
+
+        rows = conn.execute(
             base_sql + " ORDER BY finished_at DESC LIMIT ? OFFSET ?",
-            (*params, limit, offset),
+            (*params_with_trial_user, limit, offset),
         ).fetchall()
 
         trials: list[dict] = []
-        for r in base_rows:
-            slug = r["slug"]
-            website = r["website"]
-            # Get discovery categories for this slug's latest execution (if available)
-            disc = None
-            exec_row = conn.execute(
-                """SELECT e.id FROM trial_sessions t
-                   JOIN monitoring_executions e ON e.id = t.execution_id
-                   WHERE t.slug = ? AND e.status = 'finished'
-                   ORDER BY e.finished_at DESC LIMIT 1""",
-                (slug,),
-            ).fetchone()
-            if exec_row:
-                disc = _get_trial_discovery(conn, exec_row["id"])
-            cats = disc.get("categories") if disc else None
-            primary_cat = disc.get("category") if disc else None
-            item = {
-                "slug": slug,
-                "website": website,
-                "finished_at": r["finished_at"],
-                "categories": cats or [],
-                "category": primary_cat or (cats[0] if cats else None),
-            }
-            trials.append(item)
+        for r in rows:
+            cats: list[str] = []
+            try:
+                if r["categories_json"]:
+                    cats_raw = json.loads(r["categories_json"])
+                    if isinstance(cats_raw, list):
+                        cats = [str(x) for x in cats_raw if str(x).strip()]
+            except Exception:
+                cats = []
+            primary_cat = r["category"] or (cats[0] if cats else None)
+            trials.append(
+                {
+                    "slug": r["slug"],
+                    "website": r["website"],
+                    "finished_at": r["finished_at"],
+                    "categories": cats,
+                    "category": primary_cat,
+                }
+            )
 
-        # Optional category filter (applied after pagination since it depends on discovery JSON)
-        if category:
-            c_lower = category.lower().strip()
-            trials = [
-                t
-                for t in trials
-                if any(c_lower in (c or "").lower() for c in (t.get("categories") or []))
-                or c_lower in (t.get("category") or "").lower()
-            ]
-
-        # total_base is total rows matching domain/slug search; category filter may reduce this page
-        return {"trials": trials, "total": total_base}
+        return {"trials": trials, "total": total}
     finally:
         conn.close()
 
