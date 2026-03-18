@@ -1916,9 +1916,50 @@ def _get_or_create_trial_user(conn) -> int:
 
 def _run_trial_background(execution_id: int, trial_user_id: int, domain_id: int, domain: str) -> None:
     """Background thread: run monitoring for trial (reuse run_monitor.run)."""
+    conn = get_connection()
     try:
-        from src.monitor.run_monitor import run
+        init_db(conn)
+
+        # Keep the heavy work out of the request thread to avoid production timeouts.
+        # 1) Verify the site exists/reachable
+        try:
+            from src.domain_discovery.crawl import check_domain_reachable
+            ok, err_msg = check_domain_reachable(domain)
+            if not ok:
+                logger.warning("trial_background_unreachable domain=%s execution_id=%s err=%s", domain, execution_id, err_msg)
+                conn.execute(
+                    """UPDATE monitoring_executions SET status = 'failed', finished_at = CURRENT_TIMESTAMP WHERE id = ?""",
+                    (execution_id,),
+                )
+                conn.commit()
+                return
+        except Exception as e:
+            logger.warning("trial_background_reachability_check_failed domain=%s execution_id=%s err=%s", domain, execution_id, e)
+            conn.execute(
+                """UPDATE monitoring_executions SET status = 'failed', finished_at = CURRENT_TIMESTAMP WHERE id = ?""",
+                (execution_id,),
+            )
+            conn.commit()
+            return
+
+        # 2) Domain discovery (crawl + extract profile → domain_profiles)
+        from src.domain_discovery.run_discovery import run_discovery_for_domain
+        run_discovery_for_domain(conn, domain_id)
+
+        # 3) Prompt generation (domain_profiles → prompts)
         prompt_count = _trial_prompts_count()
+        inserted = _run_prompt_generation_sync(conn, trial_user_id, prompts_per_domain=prompt_count)
+        if inserted == 0:
+            logger.warning("trial_background_prompt_generation_failed execution_id=%s domain=%s", execution_id, domain)
+            conn.execute(
+                """UPDATE monitoring_executions SET status = 'failed', finished_at = CURRENT_TIMESTAMP WHERE id = ?""",
+                (execution_id,),
+            )
+            conn.commit()
+            return
+
+        # 4) Queue monitoring tasks
+        from src.monitor.run_monitor import run
         delay = _trial_delay_seconds()
         settings_snapshot = {
             "website": domain,
@@ -1926,6 +1967,10 @@ def _run_trial_background(execution_id: int, trial_user_id: int, domain_id: int,
             "limit_prompts": prompt_count,
             "domain_ids": [domain_id],
         }
+
+        # Re-check queue backpressure right before enqueueing tasks.
+        _trial_queue_backpressure(conn)
+
         run(
             execution_id=execution_id,
             trigger_type="trial",
@@ -1939,15 +1984,20 @@ def _run_trial_background(execution_id: int, trial_user_id: int, domain_id: int,
             use_queue=True,
         )
     except Exception:
-        conn = get_connection()
+        logger.exception("trial_background_unexpected_error execution_id=%s domain=%s", execution_id, domain)
         try:
             conn.execute(
                 """UPDATE monitoring_executions SET status = 'failed', finished_at = CURRENT_TIMESTAMP WHERE id = ?""",
                 (execution_id,),
             )
             conn.commit()
-        finally:
+        except Exception:
+            pass
+    finally:
+        try:
             conn.close()
+        except Exception:
+            pass
 
 
 def _get_trial_discovery(conn, execution_id: int) -> dict | None:
@@ -2004,6 +2054,19 @@ def _reconcile_execution_if_done(conn, execution_id: int) -> None:
     ).fetchone()
     if not row or (row["status"] or "").lower() != "running":
         return
+    # If monitoring hasn't started yet (no runs rows created), don't mark the execution finished yet.
+    # This is important because trial discovery + prompt generation now run asynchronously and there
+    # may be a short period where the queue is empty but work is still in progress.
+    try:
+        run_count_row = conn.execute(
+            "SELECT COUNT(*) AS n FROM runs WHERE execution_id = ?",
+            (execution_id,),
+        ).fetchone()
+        if not run_count_row or int(run_count_row["n"] or 0) == 0:
+            return
+    except Exception:
+        # If we can't check run count, fall back to existing behavior.
+        pass
     try:
         from src.monitor.llm_task_queue import get_queue_status
         init_db(conn)
@@ -2066,6 +2129,31 @@ def _execution_queue_eta(conn, execution_id: int) -> dict:
     # Fallback: assume ~8s model time per task if we don't have history yet.
     avg_task_seconds = float(avg_task if avg_task is not None else 8.0)
     remaining = pending + running
+
+    # If queue tasks haven't been enqueued yet (e.g. discovery/prompt-generation is still running),
+    # estimate expected task count from limit_prompts * available models so the UI can show an ETA immediately.
+    if remaining == 0 and total == 0:
+        try:
+            exec_row = conn.execute(
+                "SELECT settings_snapshot FROM monitoring_executions WHERE id = ?",
+                (execution_id,),
+            ).fetchone()
+            snapshot = {}
+            if exec_row and exec_row["settings_snapshot"]:
+                try:
+                    snapshot = json.loads(exec_row["settings_snapshot"]) or {}
+                except Exception:
+                    snapshot = {}
+            prompt_count = int(snapshot.get("limit_prompts") or 0)
+            # Models that actually have keys configured.
+            from src.monitor.query_runner import get_available_models
+            models = get_available_models()
+            expected_total = max(1, prompt_count) * max(1, len(models))
+            total = expected_total
+            remaining = expected_total
+        except Exception:
+            pass
+
     eta_seconds = max(0.0, remaining * (avg_task_seconds + max(0.0, delay)))
     return {
         "pending": pending,
@@ -2200,7 +2288,11 @@ def _execution_detail_by_id(conn, execution_id: int) -> dict | None:
 
 
 def _execution_progress_by_id(conn, execution_id: int) -> dict | None:
-    """Lightweight execution payload for polling (no citations/mentions/responses/visibility)."""
+    """Lightweight execution payload for polling.
+
+    Includes discovery + run status + queue ETA, and also prompt visibility flags when available.
+    Excludes heavy fields like full citations snippets and LLM response text to avoid proxy timeouts.
+    """
     row = conn.execute(
         """SELECT id, started_at, finished_at, trigger_type, status, settings_snapshot
            FROM monitoring_executions WHERE id = ?""",
@@ -2220,6 +2312,52 @@ def _execution_progress_by_id(conn, execution_id: int) -> dict | None:
         (execution_id,),
     ).fetchall()
     out["runs"] = [dict(r) for r in runs]
+    run_ids = [r["id"] for r in runs]
+    if run_ids:
+        placeholders = ",".join("?" * len(run_ids))
+        vis_rows = conn.execute(
+            f"""SELECT
+                       v.prompt_id,
+                       v.run_id,
+                       v.had_own_citation,
+                       CASE
+                           WHEN EXISTS (
+                               SELECT 1
+                               FROM run_prompt_mentions m
+                               WHERE m.run_id = v.run_id
+                                 AND m.prompt_id = v.prompt_id
+                                 AND m.is_own_domain = 1
+                           ) THEN 1
+                           ELSE 0
+                       END AS brand_mentioned_effective,
+                       v.competitor_only,
+                       p.text AS prompt_text,
+                       p.niche AS prompt_niche
+                FROM run_prompt_visibility v
+                JOIN prompts p ON p.id = v.prompt_id
+                WHERE v.run_id IN ({placeholders})
+                ORDER BY v.prompt_id, v.run_id""",
+            run_ids,
+        ).fetchall()
+        run_id_to_model = {r["id"]: r["model"] for r in runs}
+        by_prompt: dict[int, dict] = {}
+        for r in vis_rows:
+            pid = r["prompt_id"]
+            if pid not in by_prompt:
+                by_prompt[pid] = {
+                    "prompt_id": pid,
+                    "text": r["prompt_text"] or "",
+                    "niche": r["prompt_niche"] or "",
+                    "visibility_by_run": [],
+                }
+            by_prompt[pid]["visibility_by_run"].append({
+                "run_id": r["run_id"],
+                "model": run_id_to_model.get(r["run_id"], ""),
+                "had_own_citation": bool(r["had_own_citation"]),
+                "brand_mentioned": bool(r["brand_mentioned_effective"]),
+                "competitor_only": bool(r["competitor_only"]),
+            })
+        out["prompt_visibility"] = list(by_prompt.values())
     discovery = _get_trial_discovery(conn, execution_id)
     if discovery is not None:
         out["discovery"] = discovery
@@ -2390,24 +2528,26 @@ def trial_run(request: Request, body: dict = Body(...)):
     except HTTPException:
         conn.close()
         raise
-    # Verify the site exists before creating profile or running AI (normal website crawl check)
-    try:
-        from src.domain_discovery.crawl import check_domain_reachable
-        ok, err_msg = check_domain_reachable(domain)
-        if not ok:
-            logger.warning(
-                "trial_run_unreachable_domain ip=%s domain=%s error=%s",
-                client_ip,
-                domain,
-                err_msg,
-            )
-            raise HTTPException(status_code=400, detail=err_msg or "Domain does not exist or is not reachable. Please check the URL and try again.")
-    except HTTPException:
-        conn.close()
-        raise
-    except Exception as e:
-        conn.close()
-        raise HTTPException(status_code=400, detail=f"Could not verify domain: {e!s}")
+    # For async trials, avoid expensive reachability checks in the request thread (prevents prod timeouts).
+    # The background worker will validate reachability and mark the execution as failed if needed.
+    if sync_mode:
+        try:
+            from src.domain_discovery.crawl import check_domain_reachable
+            ok, err_msg = check_domain_reachable(domain)
+            if not ok:
+                logger.warning(
+                    "trial_run_unreachable_domain ip=%s domain=%s error=%s",
+                    client_ip,
+                    domain,
+                    err_msg,
+                )
+                raise HTTPException(status_code=400, detail=err_msg or "Domain does not exist or is not reachable. Please check the URL and try again.")
+        except HTTPException:
+            conn.close()
+            raise
+        except Exception as e:
+            conn.close()
+            raise HTTPException(status_code=400, detail=f"Could not verify domain: {e!s}")
     slug = _domain_to_slug(domain)
     logger.info("trial_run_domain_ok ip=%s domain=%s slug=%s", client_ip, domain, slug)
     try:
@@ -2467,56 +2607,6 @@ def trial_run(request: Request, body: dict = Body(...)):
             )
             raise HTTPException(status_code=500, detail="Internal error: domain row not found after insert.")
         domain_id = row["id"]
-        from src.domain_discovery.run_discovery import run_discovery_for_domain
-        logger.info(
-            "trial_run_start_discovery ip=%s domain_id=%s domain=%s",
-            client_ip,
-            domain_id,
-            domain,
-        )
-        run_discovery_for_domain(conn, domain_id)
-        row = conn.execute(
-            """SELECT dp.category, dp.categories, dp.niche, dp.value_proposition, dp.key_topics, dp.target_audience, dp.competitors, dp.discovered_at
-               FROM domain_profiles dp WHERE dp.domain_id = ?""",
-            (domain_id,),
-        ).fetchone()
-        discovery = None
-        if row:
-            try:
-                categories = json.loads(row["categories"]) if (row["categories"] or "").strip() else []
-            except (TypeError, ValueError):
-                categories = []
-            try:
-                competitors = json.loads(row["competitors"]) if (row["competitors"] or "").strip() else []
-            except (TypeError, ValueError):
-                competitors = []
-            discovery = {
-                "category": row["category"] or "",
-                "categories": list(categories) if isinstance(categories, list) else [],
-                "niche": row["niche"] or "",
-                "value_proposition": row["value_proposition"] or "",
-                "key_topics": json.loads(row["key_topics"]) if (row["key_topics"] or "").strip() else [],
-                "target_audience": row["target_audience"] or "",
-                "competitors": list(competitors) if isinstance(competitors, list) else [],
-                "discovered_at": row["discovered_at"] or "",
-            }
-        inserted = _run_prompt_generation_sync(conn, trial_user_id, prompts_per_domain=_trial_prompts_count())
-        logger.info(
-            "trial_run_prompt_generation ip=%s domain=%s trial_user_id=%s prompts_inserted=%s",
-            client_ip,
-            domain,
-            trial_user_id,
-            inserted,
-        )
-        if inserted == 0:
-            from src.monitor.query_runner import get_available_models
-            from src.monitor.prompt_generator import load_domain_profiles
-            profiles = load_domain_profiles(conn=conn, user_id=trial_user_id)
-            if not profiles:
-                raise HTTPException(status_code=400, detail="Could not create domain profile")
-            if not get_available_models():
-                raise HTTPException(status_code=503, detail="Trial is not available right now. No API keys configured.")
-            raise HTTPException(status_code=503, detail="Trial is not available right now. Prompt generation failed.")
         prompt_count = _trial_prompts_count()
         delay = _trial_delay_seconds()
         settings_snapshot = {
@@ -2525,6 +2615,52 @@ def trial_run(request: Request, body: dict = Body(...)):
             "limit_prompts": prompt_count,
             "domain_ids": [domain_id],
         }
+
+        # discovery/prompt generation will run in the background for async trials (sync_mode=false).
+        discovery = None
+        if sync_mode:
+            from src.domain_discovery.run_discovery import run_discovery_for_domain
+            logger.info(
+                "trial_run_start_discovery ip=%s domain_id=%s domain=%s",
+                client_ip,
+                domain_id,
+                domain,
+            )
+            run_discovery_for_domain(conn, domain_id)
+            row = conn.execute(
+                """SELECT dp.category, dp.categories, dp.niche, dp.value_proposition, dp.key_topics, dp.target_audience, dp.competitors, dp.discovered_at
+                   FROM domain_profiles dp WHERE dp.domain_id = ?""",
+                (domain_id,),
+            ).fetchone()
+            if row:
+                try:
+                    categories = json.loads(row["categories"]) if (row["categories"] or "").strip() else []
+                except (TypeError, ValueError):
+                    categories = []
+                try:
+                    competitors = json.loads(row["competitors"]) if (row["competitors"] or "").strip() else []
+                except (TypeError, ValueError):
+                    competitors = []
+                discovery = {
+                    "category": row["category"] or "",
+                    "categories": list(categories) if isinstance(categories, list) else [],
+                    "niche": row["niche"] or "",
+                    "value_proposition": row["value_proposition"] or "",
+                    "key_topics": json.loads(row["key_topics"]) if (row["key_topics"] or "").strip() else [],
+                    "target_audience": row["target_audience"] or "",
+                    "competitors": list(competitors) if isinstance(competitors, list) else [],
+                    "discovered_at": row["discovered_at"] or "",
+                }
+            inserted = _run_prompt_generation_sync(conn, trial_user_id, prompts_per_domain=prompt_count)
+            logger.info(
+                "trial_run_prompt_generation ip=%s domain=%s trial_user_id=%s prompts_inserted=%s",
+                client_ip,
+                domain,
+                trial_user_id,
+                inserted,
+            )
+            if inserted == 0:
+                raise HTTPException(status_code=503, detail="Trial is not available right now. Prompt generation failed.")
         conn.execute(
             """INSERT INTO monitoring_executions (user_id, trigger_type, status, settings_snapshot)
                VALUES (?, 'trial', 'running', ?)""",

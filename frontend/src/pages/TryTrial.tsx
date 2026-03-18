@@ -817,6 +817,25 @@ export function TryTrial() {
     const discovery = execution.discovery;
     const q = execution.queue;
     const etaText = formatEta(q?.eta_seconds);
+    const pvItems = execution.prompt_visibility || [];
+    const visibilityByModel: Record<
+      string,
+      { cited: number; brand: number; competitor: number; processed: number; not_present: number }
+    > = {};
+    for (const pv of pvItems) {
+      for (const vr of pv.visibility_by_run) {
+        const model = vr.model || 'unknown';
+        if (!visibilityByModel[model]) {
+          visibilityByModel[model] = { cited: 0, brand: 0, competitor: 0, processed: 0, not_present: 0 };
+        }
+        visibilityByModel[model].processed += 1;
+        const hasAny = vr.had_own_citation || vr.brand_mentioned || vr.competitor_only;
+        if (vr.had_own_citation) visibilityByModel[model].cited += 1;
+        if (vr.brand_mentioned) visibilityByModel[model].brand += 1;
+        if (vr.competitor_only) visibilityByModel[model].competitor += 1;
+        if (!hasAny) visibilityByModel[model].not_present += 1;
+      }
+    }
     return (
       <div className="page dashboard try-results-page">
         <header className="page-header">
@@ -890,6 +909,40 @@ export function TryTrial() {
                         <td><ModelLabel model={r.model} /></td>
                         <td><StatusBadge status={r.status} /></td>
                         <td>{r.prompt_count}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+        {pvItems.length > 0 && (
+          <Card className="trial-results-card">
+            <CardHeader>
+              <CardTitle>Visibility (partial)</CardTitle>
+              <CardDescription>Prompts completed so far.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="monitoring-table-wrap">
+                <table className="prompts-table monitoring-table">
+                  <thead>
+                    <tr>
+                      <th>Model</th>
+                      <th>Cited</th>
+                      <th>Brand mentioned</th>
+                      <th>Competitor only</th>
+                      <th>Not present</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(visibilityByModel).map(([model, v]) => (
+                      <tr key={model}>
+                        <td>{model}</td>
+                        <td>{v.cited}</td>
+                        <td>{v.brand}</td>
+                        <td>{v.competitor}</td>
+                        <td>{v.not_present}</td>
                       </tr>
                     ))}
                   </tbody>
