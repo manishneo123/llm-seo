@@ -114,5 +114,11 @@ jobs:
                 --password-stdin "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
 
             docker compose config -q
-            docker compose pull ${{ env.BACKEND_SERVICE_NAME }} ${{ env.FRONTEND_SERVICE_NAME }}
-            docker compose up -d --remove-orphans ${{ env.BACKEND_SERVICE_NAME }} ${{ env.FRONTEND_SERVICE_NAME }}
+
+            for SERVICE_NAME in "${{ env.BACKEND_SERVICE_NAME }}" "${{ env.FRONTEND_SERVICE_NAME }}"; do
+              docker compose pull "$SERVICE_NAME"
+              docker compose rm -sf "$SERVICE_NAME" || true
+              docker compose up -d --force-recreate --no-deps "$SERVICE_NAME"
+            done
+
+            docker compose up -d --remove-orphans
