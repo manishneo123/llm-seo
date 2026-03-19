@@ -120,7 +120,9 @@ def _store_single_monitor_result(conn, run_id: int, prompt_id: int, model: str, 
         tracked_domains = []
     if not tracked_domains:
         tracked_domains = load_tracked_domains()
-    parsed = parse_response(prompt_id, model, response or "", debug=debug)
+    # Use execution-scoped tracked_domains so "is_own_domain" is tied to the current analyzed domain(s),
+    # not the global tracked domain list from older runs.
+    parsed = parse_response(prompt_id, model, response or "", tracked_domains=tracked_domains, debug=debug)
     for _pid, _m, cited_domain, snippet, is_own_domain in parsed:
         conn.execute(
             "INSERT INTO citations (run_id, prompt_id, model, cited_domain, raw_snippet, is_own_domain) VALUES (?, ?, ?, ?, ?, ?)",

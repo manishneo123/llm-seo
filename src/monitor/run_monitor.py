@@ -314,7 +314,9 @@ def run(
         run_id = run_ids[model]
         if debug_citations:
             print(f"  [response] prompt_id={prompt_id} model={model} len={len(response or '')} has_http={'http' in (response or '')}")
-        parsed = parse_response(prompt_id, model, response, debug=debug_citations)
+        # Use execution-scoped tracked_domains so "is_own_domain" is tied to the
+        # current monitored domain(s), not global tracked domains from older runs.
+        parsed = parse_response(prompt_id, model, response, tracked_domains=tracked_domains, debug=debug_citations)
         for _pid, _model, cited_domain, snippet, is_own_domain in parsed:
             conn.execute(
                 "INSERT INTO citations (run_id, prompt_id, model, cited_domain, raw_snippet, is_own_domain) VALUES (?, ?, ?, ?, ?, ?)",
