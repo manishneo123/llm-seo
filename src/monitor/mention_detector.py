@@ -1,9 +1,44 @@
 """Detect brand/domain mention in LLM response text (for run_prompt_visibility.brand_mentioned)."""
+import re
 from pathlib import Path
 
 
 # Return type: list of (mentioned_string, is_own_domain)
 MentionResult = list[tuple[str, bool]]
+
+
+def _norm_identity_token(value: str) -> str:
+    """Normalize a brand/domain token for robust own-vs-competitor comparison."""
+    s = (value or "").strip().lower()
+    if not s:
+        return ""
+    if "://" in s:
+        s = s.split("://", 1)[1]
+    s = s.split("/", 1)[0].split(":", 1)[0]
+    if s.startswith("www."):
+        s = s[4:]
+    return s
+
+
+def _identity_aliases(value: str) -> set[str]:
+    """
+    Return aliases for identity matching.
+    Example:
+      - "trustradius.com" -> {"trustradius.com", "trustradius"}
+      - "Trust Radius" -> {"trust radius", "trustradius"}
+    """
+    base = _norm_identity_token(value)
+    if not base:
+        return set()
+    out = {base}
+    if "." in base:
+        first = base.split(".", 1)[0].strip()
+        if first:
+            out.add(first)
+    compact = re.sub(r"[^a-z0-9]+", "", base)
+    if compact:
+        out.add(compact)
+    return out
 
 
 def load_brand_names() -> list[str]:
@@ -84,6 +119,7 @@ def get_mentions_in_text(
     text_lower = response_text.lower()
     seen: set[tuple[str, bool]] = set()
     out: MentionResult = []
+    own_norm: set[str] = set()
 
     if tracked_domains is None:
         from src.monitor.citation_parser import load_tracked_domains
@@ -92,6 +128,7 @@ def get_mentions_in_text(
         if not d:
             continue
         d_clean = d.lower().strip()
+        own_norm.update(_identity_aliases(d_clean))
         key = (d, True)
         if key in seen:
             continue
@@ -112,6 +149,8 @@ def get_mentions_in_text(
     for name in brand_names:
         if not name:
             continue
+        n_clean = name.strip().lower()
+        own_norm.update(_identity_aliases(n_clean))
         key = (name, True)
         if key in seen:
             continue
@@ -129,6 +168,10 @@ def get_mentions_in_text(
         if not c or not (c.strip()):
             continue
         c_clean = c.strip().lower()
+        c_aliases = _identity_aliases(c_clean)
+        # Never classify own tracked domain/brand aliases as competitor mentions.
+        if any(a in own_norm for a in c_aliases):
+            continue
         key = (c.strip(), False)
         if key in seen:
             continue

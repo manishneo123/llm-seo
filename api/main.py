@@ -2,6 +2,7 @@
 import json
 import os
 import re
+import re
 import sys
 import threading
 import time
@@ -2190,6 +2191,64 @@ def _execution_detail_by_id(conn, execution_id: int) -> dict | None:
     out["runs"] = [dict(r) for r in runs]
     run_ids = [r["id"] for r in out["runs"]]
     run_id_to_model = {r["id"]: r["model"] for r in out["runs"]}
+    # Derive execution-scoped domains so "your site" flags can be recomputed robustly
+    # even for older runs that may have stale is_own_domain values in DB.
+    tracked_domains: list[str] = []
+    try:
+        snapshot = out.get("settings_snapshot") if isinstance(out.get("settings_snapshot"), dict) else {}
+        website = (snapshot.get("website") or "").strip() if isinstance(snapshot, dict) else ""
+        if website:
+            tracked_domains.append(website)
+        domain_ids = (snapshot.get("domain_ids") or []) if isinstance(snapshot, dict) else []
+        if domain_ids and not isinstance(domain_ids, list):
+            domain_ids = [domain_ids]
+        if domain_ids:
+            placeholders_d = ",".join("?" * len(domain_ids))
+            drows = conn.execute(
+                f"SELECT domain FROM domains WHERE id IN ({placeholders_d})",
+                tuple(domain_ids),
+            ).fetchall()
+            tracked_domains.extend([r["domain"] for r in drows if r["domain"]])
+    except Exception:
+        tracked_domains = tracked_domains or []
+
+    def _norm_domain(v: str) -> str:
+        s = (v or "").strip().lower()
+        if "://" in s:
+            s = s.split("://", 1)[1]
+        s = s.split("/", 1)[0].split(":", 1)[0]
+        if s.startswith("www."):
+            s = s[4:]
+        return s
+
+    def _identity_aliases(v: str) -> set[str]:
+        base = _norm_domain(v)
+        if not base:
+            return set()
+        out = {base}
+        if "." in base:
+            first = base.split(".", 1)[0].strip()
+            if first:
+                out.add(first)
+        compact = re.sub(r"[^a-z0-9]+", "", base)
+        if compact:
+            out.add(compact)
+        return out
+
+    tracked_norm: set[str] = set()
+    for d in tracked_domains:
+        tracked_norm.update(_identity_aliases(d))
+
+    def _is_own_domain(value: str) -> bool:
+        aliases = _identity_aliases(value)
+        if not aliases or not tracked_norm:
+            return False
+        for cand in aliases:
+            for t in tracked_norm:
+                if cand == t or cand.endswith("." + t) or t.endswith("." + cand):
+                    return True
+        return False
+
     out["prompt_visibility"] = []
     if run_ids:
         placeholders = ",".join("?" * len(run_ids))
@@ -2235,29 +2294,52 @@ def _execution_detail_by_id(conn, execution_id: int) -> dict | None:
                 "brand_mentioned": bool(r["brand_mentioned_effective"]),
                 "competitor_only": bool(r["competitor_only"]),
             })
-        out["prompt_visibility"] = list(by_prompt.values())
         # Citations, mentions, and LLM responses for full trial results
         cite_rows = conn.execute(
             f"""SELECT c.run_id, c.prompt_id, c.model, c.cited_domain, c.raw_snippet, c.is_own_domain
                 FROM citations c WHERE c.run_id IN ({placeholders}) ORDER BY c.prompt_id, c.run_id""",
             run_ids,
         ).fetchall()
-        out["citations"] = [dict(r) for r in cite_rows]
+        citations_out = []
+        own_cite_pairs: set[tuple[int, int]] = set()
+        for r in cite_rows:
+            item = dict(r)
+            effective_own = _is_own_domain(item.get("cited_domain") or "")
+            item["is_own_domain"] = bool(effective_own)
+            citations_out.append(item)
+            if effective_own:
+                own_cite_pairs.add((int(item["run_id"]), int(item["prompt_id"])))
+        out["citations"] = citations_out
         mention_rows = conn.execute(
             f"""SELECT run_id, prompt_id, model, mentioned, is_own_domain
                 FROM run_prompt_mentions WHERE run_id IN ({placeholders}) ORDER BY prompt_id, run_id""",
             run_ids,
         ).fetchall()
-        out["mentions"] = [
-            {
+        mentions_out = []
+        own_mention_pairs: set[tuple[int, int]] = set()
+        for r in mention_rows:
+            mentioned = r["mentioned"] or ""
+            effective_own = _is_own_domain(mentioned)
+            item = {
                 "run_id": r["run_id"],
                 "prompt_id": r["prompt_id"],
                 "model": r["model"] or "",
-                "mentioned": r["mentioned"] or "",
-                "is_own_domain": bool(r["is_own_domain"]),
+                "mentioned": mentioned,
+                "is_own_domain": bool(effective_own),
             }
-            for r in mention_rows
-        ]
+            mentions_out.append(item)
+            if effective_own:
+                own_mention_pairs.add((int(r["run_id"]), int(r["prompt_id"])))
+        out["mentions"] = mentions_out
+
+        # Recompute visibility flags for robustness on stale historical rows.
+        for prompt_item in by_prompt.values():
+            pid = int(prompt_item["prompt_id"])
+            for v in prompt_item["visibility_by_run"]:
+                pair = (int(v["run_id"]), pid)
+                v["had_own_citation"] = pair in own_cite_pairs
+                v["brand_mentioned"] = pair in own_mention_pairs
+        out["prompt_visibility"] = list(by_prompt.values())
         resp_rows = conn.execute(
             f"""SELECT prompt_id, run_id, model, response_text
                 FROM run_prompt_responses WHERE run_id IN ({placeholders}) ORDER BY prompt_id, run_id""",
