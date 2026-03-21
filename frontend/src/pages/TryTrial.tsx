@@ -362,10 +362,6 @@ function ResultsView({
             </div>
             <div className="prompts-table-wrap execution-visibility-wrap">
               <table className="prompts-table execution-visibility-table">
-                <colgroup>
-                  <col className="col-prompt" style={{ width: '280px' }} />
-                  <col className="col-niche" style={{ width: '140px' }} />
-                </colgroup>
                 <thead>
                   <tr>
                     <th className="col-prompt">Prompt</th>

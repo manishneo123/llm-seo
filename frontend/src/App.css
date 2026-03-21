@@ -22,6 +22,7 @@
 .app-center {
   max-width: 1200px;
   width: 100%;
+  min-width: 0; /* flex/grid: allow column to shrink so inner tables can scroll */
   margin: 0 auto;
   display: flex;
   flex-direction: column;
@@ -251,6 +252,9 @@
 .app-body {
   flex: 1;
   padding: var(--space-lg);
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .app-footer {
@@ -843,8 +847,12 @@
 
 .monitoring-table-wrap {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
+  min-width: 0;
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border);
+  overscroll-behavior-x: contain;
 }
 
 .monitoring-table thead th {
@@ -927,10 +935,13 @@
 
 .execution-detail-card {
   margin-bottom: var(--space-2xl);
+  min-width: 0;
+  max-width: 100%;
 }
 
 .execution-detail-card .card-ui-content {
   padding: var(--space-xl);
+  min-width: 0;
 }
 
 .execution-detail-empty {
@@ -942,12 +953,19 @@
 
 .execution-visibility-content {
   padding: var(--space-xl);
-  overflow-x: auto;
+  overflow-x: visible; /* horizontal scroll lives on .execution-visibility-wrap */
+  min-width: 0;
 }
 
 .execution-visibility-wrap {
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border);
+  overflow-x: auto;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
+  min-width: 0;
+  overscroll-behavior-x: contain;
 }
 
 .execution-visibility-model-header {
@@ -955,6 +973,9 @@
   font-size: var(--text-xs);
   font-weight: var(--font-semibold);
   color: var(--color-text-muted);
+  min-width: 3rem;
+  padding: var(--space-xs);
+  vertical-align: bottom;
 }
 
 .execution-visibility-subheader {
@@ -965,6 +986,8 @@
 
 .execution-visibility-cell {
   text-align: center;
+  min-width: 2.5rem;
+  padding: var(--space-xs) var(--space-xs);
 }
 
 .execution-settings-pre {
@@ -1284,6 +1307,10 @@
 
 .prompts-table-wrap {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
+  min-width: 0;
+  overscroll-behavior-x: contain;
 }
 
 /* Execution detail: prompt visibility table – keep Prompt and Niche columns separate */
@@ -1326,6 +1353,96 @@
 }
 .execution-visibility-table td.execution-visibility-niche-cell {
   white-space: normal;
+}
+
+/* Trial / execution prompt visibility: mobile — avoid squashed overlapping columns */
+@media (max-width: 639px) {
+  .execution-visibility-content {
+    padding: var(--space-md);
+  }
+
+  .trial-results-card .card-ui-content {
+    padding: var(--space-md);
+  }
+
+  .trial-results-card .card-ui-header {
+    padding: var(--space-md);
+  }
+
+  .execution-detail-card .card-ui-content {
+    padding: var(--space-md);
+  }
+
+  .execution-detail-card .card-ui-header {
+    padding: var(--space-md);
+  }
+
+  .visibility-legend {
+    gap: var(--space-sm);
+    margin-bottom: var(--space-sm);
+  }
+
+  .execution-visibility-table {
+    width: max-content;
+    min-width: 100%;
+    table-layout: auto;
+  }
+
+  .execution-visibility-table th.col-prompt,
+  .execution-visibility-table td.col-prompt {
+    width: 10rem;
+    min-width: 10rem;
+    max-width: 14rem;
+  }
+
+  .execution-visibility-table th.col-niche,
+  .execution-visibility-table td.col-niche {
+    width: 5rem;
+    min-width: 5rem;
+    max-width: 7rem;
+  }
+
+  .execution-visibility-model-header {
+    min-width: 2.75rem;
+    font-size: 0.65rem;
+    padding: 4px 2px;
+    white-space: normal;
+    word-break: break-word;
+    line-height: 1.2;
+    hyphens: auto;
+  }
+
+  .execution-visibility-model-header .visibility-model-label {
+    font-size: 0.65rem;
+    padding: 0.1rem 0.35rem;
+    max-width: 100%;
+    white-space: normal;
+    word-break: break-word;
+    justify-content: center;
+    text-align: center;
+  }
+
+  .execution-visibility-cell {
+    min-width: 2.25rem;
+    padding: 4px 2px;
+  }
+
+  .prompts-table th,
+  .prompts-table td {
+    padding: 0.3rem 0.35rem;
+    font-size: 0.8125rem;
+  }
+
+  .trial-progress-meta {
+    display: inline;
+    margin-left: 0;
+  }
+
+  .monitoring-table tbody td,
+  .monitoring-table thead th {
+    padding: var(--space-sm) var(--space-md);
+    font-size: var(--text-xs);
+  }
 }
 
 .visibility-legend {
@@ -2265,6 +2382,13 @@
 }
 
 /* ---------- Trial results page (Lovable-style) ---------- */
+.try-results-page {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
 .try-results-page .page-header {
   position: relative;
 }
@@ -2320,6 +2444,10 @@
 
 .trial-results-meta {
   margin-top: var(--space-sm);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
 }
 
 .trial-progress-meta {
@@ -2331,10 +2459,13 @@
 
 .trial-results-card {
   margin-bottom: var(--space-2xl);
+  min-width: 0;
+  max-width: 100%;
 }
 
 .trial-results-card .card-ui-content {
   padding: var(--space-xl);
+  min-width: 0;
 }
 
 .trial-discovery-grid {
