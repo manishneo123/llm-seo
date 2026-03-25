@@ -2191,27 +2191,10 @@ def _execution_detail_by_id(conn, execution_id: int) -> dict | None:
     out["runs"] = [dict(r) for r in runs]
     run_ids = [r["id"] for r in out["runs"]]
     run_id_to_model = {r["id"]: r["model"] for r in out["runs"]}
-    # Derive execution-scoped domains so "your site" flags can be recomputed robustly
-    # even for older runs that may have stale is_own_domain values in DB.
-    tracked_domains: list[str] = []
-    try:
-        snapshot = out.get("settings_snapshot") if isinstance(out.get("settings_snapshot"), dict) else {}
-        website = (snapshot.get("website") or "").strip() if isinstance(snapshot, dict) else ""
-        if website:
-            tracked_domains.append(website)
-        domain_ids = (snapshot.get("domain_ids") or []) if isinstance(snapshot, dict) else []
-        if domain_ids and not isinstance(domain_ids, list):
-            domain_ids = [domain_ids]
-        if domain_ids:
-            placeholders_d = ",".join("?" * len(domain_ids))
-            drows = conn.execute(
-                f"SELECT domain FROM domains WHERE id IN ({placeholders_d})",
-                tuple(domain_ids),
-            ).fetchall()
-            tracked_domains.extend([r["domain"] for r in drows if r["domain"]])
-    except Exception:
-        tracked_domains = tracked_domains or []
+    discovery = _get_trial_discovery(conn, execution_id)
 
+    # Runtime identity matching: normalize brand/domain aliases so own-vs-competitor
+    # flags are robust even when stored DB flags are stale.
     def _norm_domain(v: str) -> str:
         s = (v or "").strip().lower()
         if "://" in s:
@@ -2235,19 +2218,63 @@ def _execution_detail_by_id(conn, execution_id: int) -> dict | None:
             out.add(compact)
         return out
 
-    tracked_norm: set[str] = set()
+    def _aliases_overlap(a_set: set[str], b_set: set[str]) -> bool:
+        if not a_set or not b_set:
+            return False
+        for a in a_set:
+            for b in b_set:
+                if a == b or a.endswith("." + b) or b.endswith("." + a):
+                    return True
+        return False
+
+    tracked_domains: list[str] = []
+    try:
+        snapshot = out.get("settings_snapshot") if isinstance(out.get("settings_snapshot"), dict) else {}
+        website = (snapshot.get("website") or "").strip() if isinstance(snapshot, dict) else ""
+        if website:
+            tracked_domains.append(website)
+        domain_ids = (snapshot.get("domain_ids") or []) if isinstance(snapshot, dict) else []
+        if domain_ids and not isinstance(domain_ids, list):
+            domain_ids = [domain_ids]
+        if domain_ids:
+            placeholders_d = ",".join("?" * len(domain_ids))
+            drows = conn.execute(
+                f"SELECT domain, brand_names FROM domains WHERE id IN ({placeholders_d})",
+                tuple(domain_ids),
+            ).fetchall()
+            for dr in drows:
+                if dr["domain"]:
+                    tracked_domains.append(dr["domain"])
+                try:
+                    brands = json.loads(dr["brand_names"] or "[]")
+                    if isinstance(brands, list):
+                        tracked_domains.extend([str(b) for b in brands if str(b).strip()])
+                except Exception:
+                    pass
+    except Exception:
+        tracked_domains = tracked_domains or []
+
+    own_aliases: set[str] = set()
     for d in tracked_domains:
-        tracked_norm.update(_identity_aliases(d))
+        own_aliases.update(_identity_aliases(d))
+
+    competitor_aliases: set[str] = set()
+    competitors = (discovery or {}).get("competitors") if isinstance(discovery, dict) else []
+    if isinstance(competitors, list):
+        for c in competitors:
+            c_aliases = _identity_aliases(str(c))
+            # Guardrail: never treat own identity variants as competitors.
+            if _aliases_overlap(c_aliases, own_aliases):
+                continue
+            competitor_aliases.update(c_aliases)
 
     def _is_own_domain(value: str) -> bool:
         aliases = _identity_aliases(value)
-        if not aliases or not tracked_norm:
-            return False
-        for cand in aliases:
-            for t in tracked_norm:
-                if cand == t or cand.endswith("." + t) or t.endswith("." + cand):
-                    return True
-        return False
+        return _aliases_overlap(aliases, own_aliases)
+
+    def _is_competitor(value: str) -> bool:
+        aliases = _identity_aliases(value)
+        return bool(aliases) and not _aliases_overlap(aliases, own_aliases) and _aliases_overlap(aliases, competitor_aliases)
 
     out["prompt_visibility"] = []
     if run_ids:
@@ -2302,13 +2329,17 @@ def _execution_detail_by_id(conn, execution_id: int) -> dict | None:
         ).fetchall()
         citations_out = []
         own_cite_pairs: set[tuple[int, int]] = set()
+        competitor_pairs: set[tuple[int, int]] = set()
         for r in cite_rows:
             item = dict(r)
             effective_own = _is_own_domain(item.get("cited_domain") or "")
             item["is_own_domain"] = bool(effective_own)
             citations_out.append(item)
+            pair = (int(item["run_id"]), int(item["prompt_id"]))
             if effective_own:
-                own_cite_pairs.add((int(item["run_id"]), int(item["prompt_id"])))
+                own_cite_pairs.add(pair)
+            elif _is_competitor(item.get("cited_domain") or ""):
+                competitor_pairs.add(pair)
         out["citations"] = citations_out
         mention_rows = conn.execute(
             f"""SELECT run_id, prompt_id, model, mentioned, is_own_domain
@@ -2328,8 +2359,11 @@ def _execution_detail_by_id(conn, execution_id: int) -> dict | None:
                 "is_own_domain": bool(effective_own),
             }
             mentions_out.append(item)
+            pair = (int(r["run_id"]), int(r["prompt_id"]))
             if effective_own:
-                own_mention_pairs.add((int(r["run_id"]), int(r["prompt_id"])))
+                own_mention_pairs.add(pair)
+            elif _is_competitor(mentioned):
+                competitor_pairs.add(pair)
         out["mentions"] = mentions_out
 
         # Recompute visibility flags for robustness on stale historical rows.
@@ -2339,6 +2373,7 @@ def _execution_detail_by_id(conn, execution_id: int) -> dict | None:
                 pair = (int(v["run_id"]), pid)
                 v["had_own_citation"] = pair in own_cite_pairs
                 v["brand_mentioned"] = pair in own_mention_pairs
+                v["competitor_only"] = (pair in competitor_pairs) and not v["had_own_citation"] and not v["brand_mentioned"]
         out["prompt_visibility"] = list(by_prompt.values())
         resp_rows = conn.execute(
             f"""SELECT prompt_id, run_id, model, response_text
@@ -2358,7 +2393,6 @@ def _execution_detail_by_id(conn, execution_id: int) -> dict | None:
         out["citations"] = []
         out["mentions"] = []
         out["prompt_responses"] = []
-    discovery = _get_trial_discovery(conn, execution_id)
     if discovery is not None:
         out["discovery"] = discovery
     # Queue/ETA info (useful for trials/monitoring progress UI)
@@ -2397,6 +2431,87 @@ def _execution_progress_by_id(conn, execution_id: int) -> dict | None:
     run_ids = [r["id"] for r in runs]
     if run_ids:
         placeholders = ",".join("?" * len(run_ids))
+        discovery = _get_trial_discovery(conn, execution_id)
+
+        def _norm_domain(v: str) -> str:
+            s = (v or "").strip().lower()
+            if "://" in s:
+                s = s.split("://", 1)[1]
+            s = s.split("/", 1)[0].split(":", 1)[0]
+            if s.startswith("www."):
+                s = s[4:]
+            return s
+
+        def _identity_aliases(v: str) -> set[str]:
+            base = _norm_domain(v)
+            if not base:
+                return set()
+            out = {base}
+            if "." in base:
+                first = base.split(".", 1)[0].strip()
+                if first:
+                    out.add(first)
+            compact = re.sub(r"[^a-z0-9]+", "", base)
+            if compact:
+                out.add(compact)
+            return out
+
+        def _aliases_overlap(a_set: set[str], b_set: set[str]) -> bool:
+            if not a_set or not b_set:
+                return False
+            for a in a_set:
+                for b in b_set:
+                    if a == b or a.endswith("." + b) or b.endswith("." + a):
+                        return True
+            return False
+
+        tracked_domains: list[str] = []
+        try:
+            snapshot = out.get("settings_snapshot") if isinstance(out.get("settings_snapshot"), dict) else {}
+            website = (snapshot.get("website") or "").strip() if isinstance(snapshot, dict) else ""
+            if website:
+                tracked_domains.append(website)
+            domain_ids = (snapshot.get("domain_ids") or []) if isinstance(snapshot, dict) else []
+            if domain_ids and not isinstance(domain_ids, list):
+                domain_ids = [domain_ids]
+            if domain_ids:
+                placeholders_d = ",".join("?" * len(domain_ids))
+                drows = conn.execute(
+                    f"SELECT domain, brand_names FROM domains WHERE id IN ({placeholders_d})",
+                    tuple(domain_ids),
+                ).fetchall()
+                for dr in drows:
+                    if dr["domain"]:
+                        tracked_domains.append(dr["domain"])
+                    try:
+                        brands = json.loads(dr["brand_names"] or "[]")
+                        if isinstance(brands, list):
+                            tracked_domains.extend([str(b) for b in brands if str(b).strip()])
+                    except Exception:
+                        pass
+        except Exception:
+            tracked_domains = tracked_domains or []
+
+        own_aliases: set[str] = set()
+        for d in tracked_domains:
+            own_aliases.update(_identity_aliases(d))
+
+        competitor_aliases: set[str] = set()
+        competitors = (discovery or {}).get("competitors") if isinstance(discovery, dict) else []
+        if isinstance(competitors, list):
+            for c in competitors:
+                c_aliases = _identity_aliases(str(c))
+                if _aliases_overlap(c_aliases, own_aliases):
+                    continue
+                competitor_aliases.update(c_aliases)
+
+        def _is_own(value: str) -> bool:
+            return _aliases_overlap(_identity_aliases(value), own_aliases)
+
+        def _is_competitor(value: str) -> bool:
+            aliases = _identity_aliases(value)
+            return bool(aliases) and not _aliases_overlap(aliases, own_aliases) and _aliases_overlap(aliases, competitor_aliases)
+
         vis_rows = conn.execute(
             f"""SELECT
                        v.prompt_id,
@@ -2439,6 +2554,41 @@ def _execution_progress_by_id(conn, execution_id: int) -> dict | None:
                 "brand_mentioned": bool(r["brand_mentioned_effective"]),
                 "competitor_only": bool(r["competitor_only"]),
             })
+
+        cite_rows = conn.execute(
+            f"""SELECT c.run_id, c.prompt_id, c.cited_domain
+                FROM citations c WHERE c.run_id IN ({placeholders})""",
+            run_ids,
+        ).fetchall()
+        mention_rows = conn.execute(
+            f"""SELECT m.run_id, m.prompt_id, m.mentioned
+                FROM run_prompt_mentions m WHERE m.run_id IN ({placeholders})""",
+            run_ids,
+        ).fetchall()
+        own_cite_pairs: set[tuple[int, int]] = set()
+        own_mention_pairs: set[tuple[int, int]] = set()
+        competitor_pairs: set[tuple[int, int]] = set()
+        for r in cite_rows:
+            pair = (int(r["run_id"]), int(r["prompt_id"]))
+            cited = r["cited_domain"] or ""
+            if _is_own(cited):
+                own_cite_pairs.add(pair)
+            elif _is_competitor(cited):
+                competitor_pairs.add(pair)
+        for r in mention_rows:
+            pair = (int(r["run_id"]), int(r["prompt_id"]))
+            mentioned = r["mentioned"] or ""
+            if _is_own(mentioned):
+                own_mention_pairs.add(pair)
+            elif _is_competitor(mentioned):
+                competitor_pairs.add(pair)
+        for prompt_item in by_prompt.values():
+            pid = int(prompt_item["prompt_id"])
+            for v in prompt_item["visibility_by_run"]:
+                pair = (int(v["run_id"]), pid)
+                v["had_own_citation"] = pair in own_cite_pairs
+                v["brand_mentioned"] = pair in own_mention_pairs
+                v["competitor_only"] = (pair in competitor_pairs) and not v["had_own_citation"] and not v["brand_mentioned"]
         out["prompt_visibility"] = list(by_prompt.values())
     discovery = _get_trial_discovery(conn, execution_id)
     if discovery is not None:
