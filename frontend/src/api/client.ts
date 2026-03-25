@@ -984,7 +984,7 @@ export interface TrialDirectoryItem {
 export async function getTrialBySlug(slug: string): Promise<MonitoringExecutionDetail> {
   const url = `${API_BASE}/api/trial/by-slug/${encodeURIComponent(slug)}`;
   const res = await fetch(url);
-  if (!res.ok) throw new Error(res.status === 404 ? 'No recent results for this domain' : 'Failed to load');
+  if (!res.ok) throw new Error(res.status === 404 ? 'No trial results for this domain' : 'Failed to load');
   ensureJsonResponse(res, url);
   return res.json();
 }

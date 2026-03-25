@@ -23,6 +23,25 @@ const TURNSTILE_ENABLED = false;
 const TURNSTILE_SITE_KEY = TURNSTILE_ENABLED ? (import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined) : undefined;
 
 const MAX_RESPONSE_PREVIEW = 400;
+/** Show "Regenerate analysis" when the finished trial is older than this many days */
+const TRIAL_STALE_DAYS = 30;
+const TRIAL_STALE_MS = TRIAL_STALE_DAYS * 24 * 60 * 60 * 1000;
+
+function trialWebsiteFromExecution(ex: MonitoringExecutionDetail): string {
+  const snap = ex.settings_snapshot;
+  if (snap && typeof snap === 'object' && !Array.isArray(snap) && 'website' in snap) {
+    const w = (snap as { website?: unknown }).website;
+    if (typeof w === 'string' && w.trim()) return w.trim();
+  }
+  return '';
+}
+
+function isTrialFinishedStale(ex: MonitoringExecutionDetail): boolean {
+  if (ex.status !== 'finished' || !ex.finished_at) return false;
+  const t = new Date(ex.finished_at).getTime();
+  if (Number.isNaN(t)) return false;
+  return Date.now() - t > TRIAL_STALE_MS;
+}
 
 function StatusBadge({ status }: { status: string }) {
   const variant = status === 'finished' ? 'success' : status === 'failed' ? 'error' : status === 'running' ? 'running' : 'default';
@@ -213,13 +232,23 @@ function ResultsView({
   slugDisplay,
   onStartOver,
   showStartOver = true,
+  showRegenerate,
+  onRegenerate,
+  regenerateSubmitting,
+  regenerateError,
 }: {
   execution: MonitoringExecutionDetail;
   slugDisplay?: string;
   onStartOver: () => void;
   showStartOver?: boolean;
+  showRegenerate?: boolean;
+  onRegenerate?: () => void;
+  regenerateSubmitting?: boolean;
+  regenerateError?: string | null;
 }) {
   const discovery = execution.discovery;
+  const staleFinished =
+    execution.status === 'finished' && isTrialFinishedStale(execution);
   return (
     <div className="page dashboard try-results-page">
       <header className="page-header">
@@ -234,6 +263,11 @@ function ResultsView({
         <p className="page-description">
           {execution.started_at}
           {execution.finished_at ? ` · Finished ${execution.finished_at}` : ''}
+          {staleFinished
+            ? showRegenerate
+              ? ` · These results are older than ${TRIAL_STALE_DAYS} days — use Regenerate for a fresh analysis.`
+              : ` · These results are older than ${TRIAL_STALE_DAYS} days — start a new trial from the home page for a fresh analysis.`
+            : ''}
         </p>
         <div className="trial-results-meta">
           <StatusBadge status={execution.status} />
@@ -246,7 +280,18 @@ function ResultsView({
               Download PDF report
             </button>
           )}
+          {showRegenerate && onRegenerate && (
+            <button
+              type="button"
+              className="btn-primary btn-sm"
+              disabled={regenerateSubmitting}
+              onClick={onRegenerate}
+            >
+              {regenerateSubmitting ? 'Starting…' : 'Regenerate analysis'}
+            </button>
+          )}
         </div>
+        {regenerateError ? <p className="form-error trial-regenerate-error">{regenerateError}</p> : null}
       </header>
 
       {discovery && (
@@ -442,6 +487,9 @@ export function TryTrial() {
   const [statusError, setStatusError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   const [lastTrialSlug, setLastTrialSlug] = useState<string | null>(null);
+  const [regenerateSubmitting, setRegenerateSubmitting] = useState(false);
+  const [regenerateError, setRegenerateError] = useState<string | null>(null);
+  const [directoryTotal, setDirectoryTotal] = useState(0);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const turnstileContainerRef = useRef<HTMLDivElement | null>(null);
   const turnstileWidgetIdRef = useRef<string | null>(null);
@@ -494,8 +542,14 @@ export function TryTrial() {
   useEffect(() => {
     if (slugParam) return;
     getTrialDirectory({ limit: 10, offset: 0 })
-      .then((res) => setDirectory(res.trials || []))
-      .catch(() => setDirectory([]));
+      .then((res) => {
+        setDirectory(res.trials || []);
+        setDirectoryTotal(typeof res.total === 'number' ? res.total : 0);
+      })
+      .catch(() => {
+        setDirectory([]);
+        setDirectoryTotal(0);
+      });
   }, [slugParam]);
 
   // Load Cloudflare Turnstile script when site key is configured
@@ -668,8 +722,44 @@ export function TryTrial() {
     setLastTrialSlug(null);
     setStatusError(null);
     setError(null);
+    setRegenerateError(null);
     setWebsite('');
     if (slugParam) navigate('/', { replace: true });
+  }
+
+  function handleRegenerate() {
+    if (!execution) return;
+    const site = trialWebsiteFromExecution(execution);
+    if (!site) {
+      setRegenerateError('Could not determine the website for this trial. Start a new run from the home page.');
+      return;
+    }
+    if (TURNSTILE_SITE_KEY) {
+      setRegenerateError('Start a fresh trial from the home page to complete the security check.');
+      return;
+    }
+    setRegenerateSubmitting(true);
+    setRegenerateError(null);
+    runTrial(site, undefined, false)
+      .then((res) => {
+        if (!res || !res.token) {
+          throw new Error('Trial did not return a session token. Please try again.');
+        }
+        sessionStorage.setItem(TRIAL_TOKEN_KEY, res.token);
+        setToken(res.token);
+        setLastTrialSlug(res.slug);
+        setStatusError(null);
+        pollFailuresRef.current = 0;
+        if (res.execution) {
+          setExecution(res.execution);
+        } else {
+          setExecution(null);
+        }
+      })
+      .catch((err) => {
+        setRegenerateError(err instanceof Error ? err.message : 'Regenerate failed');
+      })
+      .finally(() => setRegenerateSubmitting(false));
   }
 
   // Viewing by slug: show loading until slug load attempted
@@ -689,7 +779,7 @@ export function TryTrial() {
       <div className="page dashboard try-results-page">
         <header className="page-header">
           <h1 className="page-title">Try it free</h1>
-          <p className="page-description">No recent results for this domain (or results are older than 7 days). Run a new trial below.</p>
+          <p className="page-description">No trial results found for this domain. Run a new trial below.</p>
           <Link to="/" className="btn-primary">Run a trial</Link>
         </header>
       </div>
@@ -759,8 +849,10 @@ export function TryTrial() {
         {directory.length > 0 && (
           <Card className="trial-results-card">
             <CardHeader>
-              <CardTitle>Recent Analyses</CardTitle>
-              <CardDescription>Click a domain to view results (last 7 days).</CardDescription>
+              <CardTitle>Recent analyses</CardTitle>
+              <CardDescription>
+                Latest public trials. Open the directory to browse or search all domains.
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <ul className="trial-directory-list">
@@ -775,6 +867,11 @@ export function TryTrial() {
                   </li>
                 ))}
               </ul>
+              <div className="trial-directory-view-all">
+                <Link to="/trial-directory" className="btn-secondary btn-sm">
+                  View all{directoryTotal > directory.length ? ` (${directoryTotal})` : ''}
+                </Link>
+              </div>
             </CardContent>
           </Card>
         )}
@@ -957,6 +1054,16 @@ export function TryTrial() {
       slugDisplay={lastTrialSlug ?? slugParam ?? undefined}
       onStartOver={handleStartOver}
       showStartOver={!!slugParam || !!token}
+      showRegenerate={
+        !!execution &&
+        execution.status === 'finished' &&
+        isTrialFinishedStale(execution) &&
+        !!trialWebsiteFromExecution(execution) &&
+        !TURNSTILE_SITE_KEY
+      }
+      onRegenerate={handleRegenerate}
+      regenerateSubmitting={regenerateSubmitting}
+      regenerateError={regenerateError}
     />
   );
 }

@@ -47,7 +47,7 @@ export function Terms() {
           </p>
           <ul>
             <li>Refuse or throttle trial requests (for example, to prevent abuse or protect underlying LLM APIs).</li>
-            <li>Reuse recent trial results for the same domain within a defined window (e.g. 7 days).</li>
+            <li>Reuse recent trial results for the same domain within a defined window (e.g. 30 days).</li>
             <li>Change, pause, or discontinue the trial experience at any time.</li>
           </ul>
           <p>

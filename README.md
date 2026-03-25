@@ -18,7 +18,7 @@ So the platform is **autolearning**: it uses real citation and brand-mention out
 ## Features
 
 - **Web dashboard** — Sign up, sign in, and manage API keys and model names (OpenAI, Anthropic, Perplexity, Gemini) in Settings. Add domains, run discovery, generate prompts, and trigger monitoring from the UI. View execution history, prompt visibility (cited / brand mentioned / competitor-only per model), and citation trends.
-- **Try it free (trial)** — No sign-up required. At `/try`, enter a website URL; the system runs domain discovery (categories, niche, value proposition, competitors), generates prompts, and runs monitoring across all configured models. Results appear on a canonical page `/try/<slug>` (e.g. `/try/www-spydra-app`). Same-domain trials within 7 days reuse the last result. The trial results page shows domain discovery, visibility table, and per-prompt details: citations, mentions (own vs competitors), and full LLM responses.
+- **Try it free (trial)** — No sign-up required. At `/try`, enter a website URL; the system runs domain discovery (categories, niche, value proposition, competitors), generates prompts, and runs monitoring across all configured models. Results appear on a canonical page `/try/<slug>` (e.g. `/try/www-spydra-app`). That URL always loads the **latest finished** trial for the domain (no age cutoff). Submitting the same domain again **reuses** the last finished run if it completed within the last **30 days**; otherwise a new run is started. On the results page, if the run is older than 30 days, a **Regenerate analysis** action starts a fresh trial (when CAPTCHA is disabled; with Turnstile enabled, users start again from `/try`). **Website directory** at `/trial-directory` lists finished public trials (search by domain or category); the home trial card shows recent entries and a link to view all.
 
 ## Setup
 
@@ -79,7 +79,7 @@ uvicorn api.main:app --reload --port 8000
 cd frontend && npm run dev
 ```
 
-Open http://localhost:5173 for the dashboard (proxy forwards `/api` to port 8000). Use **Try it free** (or `/try`) to run a trial without signing in.
+Open http://localhost:5173 for the dashboard (proxy forwards `/api` to port 8000). Use **Try it free** (`/try`), open saved results at `/try/<slug>`, or browse **`/trial-directory`**, all without signing in.
 
 **5. LLM task queue worker (required for monitoring and trial)**
 

@@ -2592,7 +2592,7 @@ def _trial_run_sync(execution_id: int, trial_user_id: int, domain_id: int, domai
 def trial_run(request: Request, body: dict = Body(...)):
     """Start a trial: normalize website, add domain + minimal profile, generate 5 prompts, run monitoring. No auth.
     Rate-limited per IP; CAPTCHA required if TURNSTILE_SECRET_KEY is set; queue backpressure when busy.
-    If the same domain was run in the last 7 days, returns existing results (reused). Returns token, execution_id, slug for canonical URL /try/<slug>.
+    If the same domain finished a trial in the last 30 days, returns existing results (reused). Returns token, execution_id, slug for canonical URL /try/<slug>.
     Optional body field sync=true: run discovery, prompts and monitoring in the request (blocking); response includes full execution detail so no polling needed."""
     website = (body.get("website") or "").strip()
     sync_mode = body.get("sync") in (True, "true", "1")
@@ -2633,11 +2633,11 @@ def trial_run(request: Request, body: dict = Body(...)):
     slug = _domain_to_slug(domain)
     logger.info("trial_run_domain_ok ip=%s domain=%s slug=%s", client_ip, domain, slug)
     try:
-        # Reuse finished result for this slug if within 7 days
+        # Reuse finished result for this slug if within 30 days (avoids duplicate runs; /try/<slug> still shows older results)
         cur = conn.execute(
             """SELECT t.execution_id FROM trial_sessions t
                JOIN monitoring_executions e ON e.id = t.execution_id
-               WHERE t.slug = ? AND e.status = 'finished' AND e.finished_at >= datetime('now', '-7 days')
+               WHERE t.slug = ? AND e.status = 'finished' AND e.finished_at >= datetime('now', '-30 days')
                ORDER BY e.finished_at DESC LIMIT 1""",
             (slug,),
         )
@@ -2950,13 +2950,13 @@ def trial_status(
 
 @app.get("/api/trial/by-slug/{slug}")
 def trial_by_slug(slug: str):
-    """Get the latest finished trial result for this slug (canonical URL). Only returns results from the last 7 days. No auth."""
+    """Get the latest finished trial result for this slug (canonical URL). No age limit. No auth."""
     conn = get_connection()
     try:
         row = conn.execute(
             """SELECT t.execution_id FROM trial_sessions t
                JOIN monitoring_executions e ON e.id = t.execution_id
-               WHERE t.slug = ? AND e.status = 'finished' AND e.finished_at >= datetime('now', '-7 days')
+               WHERE t.slug = ? AND e.status = 'finished'
                ORDER BY e.finished_at DESC LIMIT 1""",
             (slug.strip(),),
         ).fetchone()
@@ -2973,12 +2973,12 @@ def trial_by_slug(slug: str):
                 row = conn.execute(
                     """SELECT t.execution_id FROM trial_sessions t
                        JOIN monitoring_executions e ON e.id = t.execution_id
-                       WHERE t.slug = ? AND e.status = 'finished' AND e.finished_at >= datetime('now', '-7 days')
+                       WHERE t.slug = ? AND e.status = 'finished'
                        ORDER BY e.finished_at DESC LIMIT 1""",
                     (slug.strip(),),
                 ).fetchone()
         if not row:
-            raise HTTPException(status_code=404, detail="No recent results for this domain")
+            raise HTTPException(status_code=404, detail="No results for this domain")
         out = _execution_detail_by_id(conn, row["execution_id"])
         if not out:
             raise HTTPException(status_code=404, detail="Execution not found")

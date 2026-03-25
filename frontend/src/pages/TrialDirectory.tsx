@@ -51,7 +51,7 @@ export function TrialDirectory() {
       <Card className="trial-results-card">
         <CardHeader>
           <CardTitle>Domains</CardTitle>
-          <CardDescription>Search by domain or category. Results are limited to recent trials.</CardDescription>
+          <CardDescription>Search by domain or category. All finished public trials are listed.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="trial-directory-filters">
