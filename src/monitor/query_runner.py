@@ -53,7 +53,7 @@ def query_openai(prompt: str, api_key: str | None = None) -> str:
     use_web_search = os.environ.get("OPENAI_USE_WEB_SEARCH", "").strip().lower() in ("1", "true", "yes")
     if use_web_search:
         # Web search models return url_citation annotations; use search model + web_search_options.
-        model = os.environ.get("OPENAI_SEARCH_MODEL", "gpt-4o-mini-search-preview").strip() or "gpt-4o-mini-search-preview"
+        model = os.environ.get("OPENAI_SEARCH_MODEL", " gpt-4o-search-preview").strip() or "gpt-4o-search-preview"
         kwargs = {
             "model": model,
             "messages": [{"role": "user", "content": prompt}],

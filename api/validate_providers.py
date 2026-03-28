@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 DEFAULT_MODELS = {
-    "openai": "gpt-4o-mini",
+    "openai": "gpt-5.4",
     "anthropic": "claude-3-5-haiku-20241022",
     "perplexity": "sonar",
     "gemini": "gemini-2.0-flash",

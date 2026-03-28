@@ -87,7 +87,7 @@ def extract_profile_with_openai(domain: str, crawled_text: str, api_key: str | N
         try:
             url = f"https://{domain}"
             prompt = PROFILE_URL_PROMPT.format(url=url)
-            model = os.environ.get("OPENAI_SEARCH_MODEL", "gpt-4o-mini-search-preview").strip() or "gpt-4o-mini-search-preview"
+            model = os.environ.get("OPENAI_SEARCH_MODEL", " gpt-4o-search-preview").strip() or "gpt-4o-search-preview"
             r = client.chat.completions.create(
                 model=model,
                 max_completion_tokens=1024,
